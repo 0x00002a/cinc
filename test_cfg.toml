@@ -1,0 +1,3 @@
+[backend]
+type = "filesystem"
+root = "./fs-store"
