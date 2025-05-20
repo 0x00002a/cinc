@@ -1,3 +1,4 @@
 pub mod args;
-pub mod config;
 pub mod backends;
+pub mod config;
+pub mod paths;

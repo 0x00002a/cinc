@@ -9,6 +9,10 @@ pub struct FilesystemStore {
     root: PathBuf,
 }
 impl FilesystemStore {
+    pub fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+
     fn filename(&self, f: &Path) -> PathBuf {
         self.root.join(f)
     }
