@@ -32,7 +32,7 @@ pub struct GameInfoConfig {
     pub save_dirs: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SteamId(u32);
 
 impl SteamId {

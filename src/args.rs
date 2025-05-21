@@ -12,31 +12,21 @@ pub struct CliArgs {
 
 #[derive(Subcommand, Clone)]
 pub enum Operation {
-    Daemon {
-        #[arg(long = "config", help = "Config file to use")]
-        config: PathBuf,
-    },
+    Init {},
     Launch(LaunchArgs),
 }
 
 #[derive(Args, Clone)]
 pub struct LaunchArgs {
-    #[arg(
-        long = "save-dir",
-        help = "Path of save files directory to sync",
-        required = true
-    )]
+    #[arg(long = "save-dir", help = "Path of save files directory to sync")]
     pub save_dir: Vec<PathBuf>,
-
-    #[command(flatten)]
-    pub fs_backend_args: Option<FsBackendArgs>,
 
     #[arg(help = "Steam command, pass as %command%")]
     pub steam_command: Vec<String>,
 }
 
 impl LaunchArgs {
-    pub fn uses_backends(&self) -> Vec<BackendInfo> {
+    /*pub fn uses_backends(&self) -> Vec<BackendInfo> {
         let mut used = Vec::new();
         if let Some(fs) = &self.fs_backend_args {
             used.push(BackendInfo::Filesystem {
@@ -44,11 +34,11 @@ impl LaunchArgs {
             })
         }
         used
-    }
+    }*/
 }
 
 #[derive(Args, Clone)]
-#[group(multiple = true, required = true)]
+#[group(multiple = true)]
 pub struct FsBackendArgs {
     #[arg(long = "fs-backend")]
     pub fs_backend: bool,
