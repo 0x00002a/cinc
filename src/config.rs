@@ -1,8 +1,4 @@
-use std::{
-    env::{self},
-    fmt::Display,
-    path::PathBuf,
-};
+use std::{fmt::Display, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
@@ -32,6 +28,9 @@ pub struct GameInfoConfig {
 pub struct SteamId(u32);
 
 impl SteamId {
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
     pub fn id(self) -> u32 {
         self.0
     }
