@@ -1,17 +1,29 @@
-use std::env::home_dir;
+use std::{env::home_dir, fs::File, io::BufReader};
 
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    config::{Config, SteamId},
+    config::{Config, SteamId, default_manifest_url},
+    manifest::GameManifests,
 };
 use clap::Parser;
+
+fn grab_manifest(url: &str) -> String {
+    reqwest::blocking::get(url).unwrap().text().unwrap()
+}
 
 fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
 
     match &args.op {
         cinc::args::Operation::Daemon { config } => {
-            let cfg: Config = toml::from_str(&std::fs::read_to_string(config)?)?;
+            let path = "./manifest.yml";
+            if !std::fs::exists(path)? {
+                let txt = grab_manifest(&default_manifest_url());
+                std::fs::write(path, &txt)?;
+            }
+            let manifest: GameManifests =
+                serde_yaml::from_reader(BufReader::new(File::open(path)?)).unwrap();
+            /*let cfg: Config = toml::from_str(&std::fs::read_to_string(config)?)?;
             let backend = cfg.backend.to_backend();
 
             let games = cfg
@@ -21,7 +33,7 @@ fn main() -> anyhow::Result<()> {
                 .collect::<anyhow::Result<Vec<_>>>()?;
             for game in &games {
                 println!("{game:#?}");
-            }
+            }*/
         }
         cinc::args::Operation::Launch(LaunchArgs { steam_command, .. }) => {
             let home = home_dir().unwrap();

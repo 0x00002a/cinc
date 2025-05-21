@@ -10,6 +10,14 @@ pub struct Config {
     pub backend: BackendInfo,
     #[serde(alias = "game")]
     pub games: Vec<GameInfoConfig>,
+
+    #[serde(default = "default_manifest_url")]
+    pub manifest_url: String,
+}
+
+pub fn default_manifest_url() -> String {
+    "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml"
+        .to_owned()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
