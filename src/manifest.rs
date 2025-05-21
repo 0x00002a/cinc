@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::SteamId;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameManifest {
     pub steam: Option<SteamInfo>,
     pub launch: Option<HashMap<TemplatePath, Vec<LaunchConfig>>>,
@@ -13,29 +13,29 @@ pub struct GameManifest {
 }
 
 /// Path which may contain substitutions such as <base> or <winLocalAppData>
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TemplatePath(String);
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LaunchConfig {
     #[serde(rename = "when")]
     pub preds: Vec<LaunchPredicate>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LaunchPredicate {
     pub bit: Option<Arch>,
     pub os: Option<Os>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileConfig {
     #[serde(rename = "when")]
     pub preds: Option<Vec<LaunchPredicate>>,
     pub tags: Option<Vec<FileTag>>,
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum FileTag {
     Save,
@@ -44,7 +44,7 @@ pub enum FileTag {
     Other,
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Os {
     Windows,
@@ -53,7 +53,7 @@ pub enum Os {
     Dos,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum Store {
     Steam,
@@ -63,7 +63,7 @@ pub enum Store {
     Other,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Arch {
     #[serde(rename = "64")]
     X86_64,
@@ -71,7 +71,7 @@ pub enum Arch {
     X86,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SteamInfo {
     pub id: SteamId,
 }

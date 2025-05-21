@@ -1,4 +1,8 @@
-use std::{env::home_dir, fs::File, io::BufReader};
+use std::{
+    env::home_dir,
+    fs::File,
+    io::{BufReader, BufWriter},
+};
 
 use cinc::{
     args::{CliArgs, LaunchArgs},
@@ -16,13 +20,23 @@ fn main() -> anyhow::Result<()> {
 
     match &args.op {
         cinc::args::Operation::Daemon { config } => {
-            let path = "./manifest.yml";
+            let path = "./manifest.bin";
             if !std::fs::exists(path)? {
+                println!("grabbing manifest...");
                 let txt = grab_manifest(&default_manifest_url());
-                std::fs::write(path, &txt)?;
+
+                let manifest: GameManifests = serde_yaml::from_str(&txt).unwrap();
+                bincode::serde::encode_into_std_write(
+                    &manifest,
+                    &mut BufWriter::new(File::create(path)?),
+                    bincode::config::standard(),
+                )?;
+                println!("write manifest...");
             }
-            let manifest: GameManifests =
-                serde_yaml::from_reader(BufReader::new(File::open(path)?)).unwrap();
+            let manifest: GameManifests = bincode::serde::decode_from_std_read(
+                &mut BufReader::new(File::open(path)?),
+                bincode::config::standard(),
+            )?;
             /*let cfg: Config = toml::from_str(&std::fs::read_to_string(config)?)?;
             let backend = cfg.backend.to_backend();
 
