@@ -13,7 +13,7 @@ use cinc::{
     backends::{self, StorageBackend, filesystem::FilesystemStore},
     config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
-    paths::{cache_dir, log_dir, steam_dir},
+    paths::{cache_dir, extract_postfix, log_dir, steam_dir},
 };
 use clap::Parser;
 use itertools::Itertools;
@@ -253,28 +253,26 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
                  local_path: fname,
                  remote_path,
                  tags,
-                 ..
              }| {
                 walkdir::WalkDir::new(fname.clone())
+                    .follow_links(false)
                     .into_iter()
                     .filter_ok(|d| !d.path().is_dir())
                     .map_ok(move |e| {
                         let p = e.path();
-                        let mut common = p
-                            .parent()
-                            .unwrap()
-                            .ancestors()
-                            .zip(fname.ancestors())
-                            .take_while(|(a, b)| a == b)
-                            .map(|(a, _)| a)
-                            .collect_vec();
-                        common.reverse();
-                        let rp = common
-                            .iter()
-                            .fold(remote_path.clone(), |rp, c| rp.join(c))
-                            .join(p.file_name().unwrap());
-                        assert!(!rp.is_dir(), "{rp:?} {remote_path:?} {common:#?} {p:?}");
-                        debug!("remote path: {rp:?} {remote_path:?} {p:?}  {common:#?}");
+                        if !fname.is_dir() {
+                            assert_eq!(&fname, p);
+                            return FileInfo {
+                                local_path: fname.clone(),
+                                remote_path: remote_path.clone(),
+                                tags,
+                            };
+                        }
+                        let postfix = extract_postfix(&fname, p);
+                        let rp = remote_path.join(postfix);
+                        assert!(!rp.is_dir(), "{rp:?} {remote_path:?}  {p:?}");
+                        debug!("remote path: {rp:?} {remote_path:?} {p:?} ");
+                        assert!(!p.is_dir());
 
                         FileInfo {
                             local_path: e.path().to_owned(),
