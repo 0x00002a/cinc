@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
     backends::{self, StorageBackend, filesystem::FilesystemStore},
-    config::{Config, SteamId, default_manifest_url},
+    config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{cache_dir, log_dir, steam_dir},
 };
@@ -165,7 +165,10 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         .find_app(app_id.id())?
         .ok_or_else(|| anyhow!("could not find steam app with id '{app_id}'"))?;
 
-    let store_user_id = steam_app_manifest.last_user.map(|u| u.to_string());
+    let store_user_id = steam_app_manifest
+        .last_user
+        .map(SteamId64::new)
+        .map(|id| id.to_id3().to_string());
     let info = TemplateInfo {
         win_prefix: steam_app_lib
             .path()
