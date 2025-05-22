@@ -1,5 +1,6 @@
 use fs_err as fs;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 use super::{Result, StorageBackend};
 
@@ -15,20 +16,29 @@ impl FilesystemStore {
     }
 
     fn filename(&self, f: &Path) -> PathBuf {
-        self.root.join(f)
+        if !f.is_absolute() {
+            self.root.join(f)
+        } else {
+            self.root.join(".".to_owned() + f.to_str().unwrap())
+        }
     }
 }
 
 impl StorageBackend for FilesystemStore {
     fn write_file(&mut self, at: &std::path::Path, bytes: &[u8]) -> Result<()> {
-        Ok(fs::write(self.filename(at), bytes)?)
+        let p = self.filename(at);
+        debug!("writing to {p:?}");
+        if !std::fs::exists(p.parent().unwrap())? {
+            fs::create_dir_all(p.parent().unwrap())?;
+        }
+        Ok(fs::write(p, bytes)?)
     }
 
     fn read_file(&self, at: &Path) -> Result<Vec<u8>> {
-        Ok(fs::read(at)?)
+        Ok(fs::read(self.filename(at))?)
     }
 
     fn exists(&self, f: &Path) -> Result<bool> {
-        Ok(std::fs::exists(f)?)
+        Ok(std::fs::exists(self.filename(f))?)
     }
 }
