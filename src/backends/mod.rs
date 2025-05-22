@@ -1,7 +1,8 @@
-use std::{path::Path, time};
+use std::path::Path;
 
 use chrono::Utc;
 use filesystem::FilesystemStore;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::config::BackendInfo;
@@ -18,10 +19,33 @@ pub enum BackendError {
 
     #[error(transparent)]
     ChronoParse(#[from] chrono::ParseError),
+
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 type Result<T, E = BackendError> = std::result::Result<T, E>;
 
-pub const SYNC_TIME_FILE: &str = "sync-time";
+pub const SYNC_TIME_FILE: &str = "mod-meta.json";
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct ModifiedMetadata {
+    pub last_write_timestamp: chrono::DateTime<Utc>,
+    pub last_write_hostname: String,
+}
+
+impl ModifiedMetadata {
+    pub fn from_sys_info() -> Self {
+        let last_write_timestamp = chrono::Local::now().to_utc();
+        let last_write_hostname = gethostname::gethostname()
+            .to_str()
+            .expect("failed to convert hostname to string")
+            .to_owned();
+        Self {
+            last_write_timestamp,
+            last_write_hostname,
+        }
+    }
+}
 
 pub trait StorageBackend {
     fn write_file(&mut self, at: &Path, bytes: &[u8]) -> Result<()>;
@@ -31,18 +55,18 @@ pub trait StorageBackend {
     fn read_file_str(&self, at: &Path) -> Result<String> {
         Ok(String::from_utf8(self.read_file(at)?)?)
     }
-    fn read_sync_time(&self) -> Result<Option<chrono::DateTime<Utc>>> {
+    fn read_sync_time(&self) -> Result<Option<ModifiedMetadata>> {
         let sync_time_file = Path::new(SYNC_TIME_FILE);
         if !self.exists(sync_time_file)? {
             return Ok(None);
         }
-        let f = self.read_file_str(sync_time_file)?;
-        Ok(Some(f.parse()?))
+        let f = self.read_file(sync_time_file)?;
+        Ok(Some(serde_json::from_slice(&f)?))
     }
 
-    fn write_sync_time(&mut self, time: &chrono::DateTime<Utc>) -> Result<()> {
-        let data = format!("{time:?}");
-        self.write_file(Path::new(SYNC_TIME_FILE), data.as_bytes())
+    fn write_sync_time(&mut self, metadata: &ModifiedMetadata) -> Result<()> {
+        let data = serde_json::to_vec(metadata)?;
+        self.write_file(Path::new(SYNC_TIME_FILE), &data)
     }
 }
 

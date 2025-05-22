@@ -193,6 +193,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-link",
 ]
@@ -207,9 +208,11 @@ dependencies = [
  "clap",
  "dirs",
  "fs-err",
+ "gethostname",
  "itertools",
  "reqwest",
  "serde",
+ "serde_json",
  "serde_yaml",
  "steamlocate",
  "thiserror 2.0.12",
@@ -491,6 +494,16 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "gethostname"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc257fdb4038301ce4b9cd1b3b51704509692bb3ff716a410cbd07925d9dae55"
+dependencies = [
+ "rustix",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]

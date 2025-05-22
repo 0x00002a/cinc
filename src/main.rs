@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    backends::{self, StorageBackend, filesystem::FilesystemStore},
+    backends::{self, ModifiedMetadata, StorageBackend, filesystem::FilesystemStore},
     config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
@@ -119,7 +119,7 @@ impl<'f> SyncInfo<'f> {
         // check that we are not overwriting anything
         if let Some(cloud_time) = backend.read_sync_time()? {
             if let Some(newest_local) = self.get_latest_modified_time()? {
-                if newest_local > cloud_time {
+                if newest_local > cloud_time.last_write_timestamp {
                     error!("newer than local");
                     bail!("newer than local!");
                 }
@@ -147,13 +147,13 @@ impl<'f> SyncInfo<'f> {
         let prev_write = backend.read_sync_time()?;
         if let Some(cloud_time) = prev_write {
             if let Some(newest_local) = self.get_latest_modified_time()? {
-                if newest_local < cloud_time {
+                if newest_local < cloud_time.last_write_timestamp {
                     error!("older than local");
                     bail!("older than local!");
                 }
             }
         }
-        let latest_write = chrono::Local::now().to_utc();
+        let latest_write = ModifiedMetadata::from_sys_info();
         // need to do this before any of the others
         backend.write_sync_time(&latest_write)?;
 
