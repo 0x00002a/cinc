@@ -3,7 +3,7 @@ use std::{
     env::home_dir,
     fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -87,8 +87,14 @@ fn get_game_manifests() -> Result<GameManifests> {
     }
 }
 
+struct FileInfo<'f> {
+    local_path: PathBuf,
+    remote_path: PathBuf,
+    tags: &'f [FileTag],
+}
+
 struct SyncInfo<'f> {
-    files: Vec<(PathBuf, &'f [FileTag])>,
+    files: Vec<FileInfo<'f>>,
     game_name: String,
 }
 
@@ -100,7 +106,7 @@ impl<'f> SyncInfo<'f> {
             let mod_times: Vec<_> = self
                 .files
                 .iter()
-                .map(|(f, _)| f)
+                .map(|f| &f.local_path)
                 .map(fs::metadata)
                 .map_ok(|m| m.modified())
                 .flatten()
@@ -117,11 +123,16 @@ impl<'f> SyncInfo<'f> {
             }
         }
 
-        for (local_path, _) in &self.files {
+        for FileInfo {
+            local_path,
+            remote_path,
+            ..
+        } in &self.files
+        {
             assert!(!local_path.is_dir());
             debug!("downloading {local_path:?} from cloud...");
             if backend.exists(local_path)? {
-                let data = backend.read_file(local_path)?;
+                let data = backend.read_file(remote_path)?;
                 fs::write(local_path, &data)?;
             }
         }
@@ -134,7 +145,7 @@ impl<'f> SyncInfo<'f> {
             let mod_times: Vec<_> = self
                 .files
                 .iter()
-                .map(|(f, _)| f)
+                .map(|f| &f.local_path)
                 .map(fs::metadata)
                 .map_ok(|m| m.modified())
                 .flatten()
@@ -150,10 +161,15 @@ impl<'f> SyncInfo<'f> {
                 }
             }
         }
-        for (local_path, _) in &self.files {
+        for FileInfo {
+            local_path,
+            remote_path,
+            ..
+        } in &self.files
+        {
             debug!("uploading {local_path:?} to the cloud...");
             let data = fs::read(local_path)?;
-            backend.write_file(local_path, &data)?;
+            backend.write_file(remote_path, &data)?;
         }
         Ok(())
     }
@@ -169,7 +185,8 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         .last_user
         .map(SteamId64::new)
         .map(|id| id.to_id3().to_string());
-    let info = TemplateInfo {
+    // local template subst
+    let local_info = TemplateInfo {
         win_prefix: steam_app_lib
             .path()
             .join("steamapps")
@@ -180,6 +197,15 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         win_user: "steamuser".to_owned(),
         base_dir: steam_app_lib.resolve_app_dir(&steam_app_manifest),
         steam_root: Some(steam_app_lib.path()),
+        store_user_id: store_user_id.as_deref(),
+    };
+
+    // remote template substs
+    let remote_info = TemplateInfo {
+        win_prefix: PathBuf::from("win_prefix"),
+        win_user: "steamuser".to_owned(),
+        base_dir: "base_dir".into(),
+        steam_root: Some(Path::new("steam_root")),
         store_user_id: store_user_id.as_deref(),
     };
     let files = manifest
@@ -194,23 +220,58 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
             })
         })
         .map(|(filename, cfg)| {
-            let fname = filename.apply_substs(&info)?;
-            Ok::<_, anyhow::Error>((PathBuf::from(fname), cfg.tags.as_slice()))
+            let fname = filename.apply_substs(&local_info)?;
+            let remote_name = filename.apply_substs(&remote_info)?;
+            Ok::<_, anyhow::Error>(FileInfo {
+                local_path: fname.into(),
+                remote_path: remote_name.into(),
+                tags: cfg.tags.as_slice(),
+            })
         })
-        .filter_ok(|(filename, _)| {
-            let ok = fs::exists(filename).unwrap();
-            if !ok {
-                debug!("rejecting {filename:#?} because it doesn't exist");
-            }
-            ok
-        })
-        .map_ok(|(fname, tags)| {
-            walkdir::WalkDir::new(fname)
-                .into_iter()
-                .filter_ok(|d| !d.path().is_dir())
-                .map_ok(move |e| (e.path().to_owned(), tags))
-                .map(|r| r.map_err(|e| e.into()))
-        })
+        .filter_ok(
+            |FileInfo {
+                 local_path: filename,
+                 ..
+             }| {
+                let ok = fs::exists(filename).unwrap();
+                if !ok {
+                    debug!("rejecting {filename:#?} because it doesn't exist");
+                }
+                ok
+            },
+        )
+        .map_ok(
+            |FileInfo {
+                 local_path: fname,
+                 remote_path,
+                 tags,
+                 ..
+             }| {
+                walkdir::WalkDir::new(fname.clone())
+                    .into_iter()
+                    .filter_ok(|d| !d.path().is_dir())
+                    .map_ok(move |e| {
+                        let p = e.path();
+                        let mut common = p
+                            .ancestors()
+                            .zip(fname.ancestors())
+                            .take_while(|(a, b)| a == b)
+                            .map(|(a, _)| a)
+                            .collect_vec();
+                        common.reverse();
+                        let remote_path = common
+                            .into_iter()
+                            .fold(remote_path.clone(), |rp, c| rp.join(c));
+
+                        FileInfo {
+                            local_path: e.path().to_owned(),
+                            remote_path,
+                            tags,
+                        }
+                    })
+                    .map(|r| r.map_err(|e| e.into()))
+            },
+        )
         .flatten_ok()
         .flatten()
         .collect::<Result<Vec<_>>>()?;
