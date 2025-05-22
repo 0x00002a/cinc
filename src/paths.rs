@@ -28,3 +28,7 @@ pub fn cache_dir() -> PathBuf {
 pub fn cache_dir() -> PathBuf {
     "./cinc-data/cache".into()
 }
+
+pub fn log_dir() -> PathBuf {
+    cache_dir().join("logs")
+}

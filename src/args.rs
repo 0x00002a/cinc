@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValue};
 
-use crate::config::{BackendInfo, BackendType};
+use crate::{
+    config::{BackendInfo, BackendType},
+    manifest::Store,
+};
 
 #[derive(Parser)]
 pub struct CliArgs {
@@ -21,8 +24,40 @@ pub struct LaunchArgs {
     #[arg(long = "save-dir", help = "Path of save files directory to sync")]
     pub save_dir: Vec<PathBuf>,
 
-    #[arg(help = "Steam command, pass as %command%")]
-    pub steam_command: Vec<String>,
+    #[arg(
+        long = "platform",
+        short = 'p',
+        help = "Platform game is running on",
+        required = false
+    )]
+    pub platform: PlatformOpt,
+
+    #[arg(help = "Command to run the game, e.g. for steam pass as %command%")]
+    pub command: Vec<String>,
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PlatformOpt {
+    Steam,
+    #[default]
+    Auto,
+}
+impl ValueEnum for PlatformOpt {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::Auto, Self::Steam]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue> {
+        match self {
+            PlatformOpt::Steam => Some(
+                PossibleValue::new("steam")
+                    .help("force steam support, usually unnecessary as autodetect should find it"),
+            ),
+            PlatformOpt::Auto => {
+                Some(PossibleValue::new("auto").help("attempt to autodetect launcher platform"))
+            }
+        }
+    }
 }
 
 impl LaunchArgs {
@@ -35,6 +70,18 @@ impl LaunchArgs {
         }
         used
     }*/
+    pub fn resolve_platform(&self) -> Option<Store> {
+        match self.platform {
+            PlatformOpt::Steam => Some(Store::Steam),
+            PlatformOpt::Auto => {
+                if self.command.iter().any(|s| s.starts_with("AppId=")) {
+                    Some(Store::Steam)
+                } else {
+                    None
+                }
+            }
+        }
+    }
 }
 
 #[derive(Args, Clone)]
