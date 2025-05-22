@@ -12,8 +12,6 @@ use crate::config::SteamId;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameManifest {
     pub steam: Option<SteamInfo>,
-    pub launch: Option<HashMap<TemplatePath, Vec<LaunchConfig>>>,
-    pub cloud: Option<HashMap<Store, bool>>,
     #[serde(default)]
     pub files: HashMap<TemplatePath, FileConfig>,
 }

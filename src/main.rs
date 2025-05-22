@@ -17,7 +17,7 @@ use cinc::{
 };
 use clap::Parser;
 use itertools::Itertools;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn grab_manifest(url: &str) -> Result<String> {
@@ -119,6 +119,7 @@ impl<'f> SyncInfo<'f> {
 
         for (local_path, _) in &self.files {
             assert!(!local_path.is_dir());
+            debug!("downloading {local_path:?} from cloud...");
             if backend.exists(local_path)? {
                 let data = backend.read_file(local_path)?;
                 fs::write(local_path, &data)?;
@@ -150,6 +151,7 @@ impl<'f> SyncInfo<'f> {
             }
         }
         for (local_path, _) in &self.files {
+            debug!("uploading {local_path:?} to the cloud...");
             let data = fs::read(local_path)?;
             backend.write_file(local_path, &data)?;
         }
@@ -163,7 +165,7 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         .find_app(app_id.id())?
         .ok_or_else(|| anyhow!("could not find steam app with id '{app_id}'"))?;
 
-    let app_id_str = app_id.to_string();
+    let store_user_id = steam_app_manifest.last_user.map(|u| u.to_string());
     let info = TemplateInfo {
         win_prefix: steam_app_lib
             .path()
@@ -175,7 +177,7 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         win_user: "steamuser".to_owned(),
         base_dir: steam_app_lib.resolve_app_dir(&steam_app_manifest),
         steam_root: Some(steam_app_lib.path()),
-        store_user_id: Some(&app_id_str),
+        store_user_id: store_user_id.as_deref(),
     };
     let files = manifest
         .files
@@ -192,7 +194,13 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
             let fname = filename.apply_substs(&info)?;
             Ok::<_, anyhow::Error>((PathBuf::from(fname), cfg.tags.as_slice()))
         })
-        .filter_ok(|(filename, _)| fs::exists(filename).unwrap())
+        .filter_ok(|(filename, _)| {
+            let ok = fs::exists(filename).unwrap();
+            if !ok {
+                debug!("rejecting {filename:#?} because it doesn't exist");
+            }
+            ok
+        })
         .map_ok(|(fname, tags)| {
             walkdir::WalkDir::new(fname)
                 .into_iter()
@@ -252,10 +260,11 @@ fn main() -> anyhow::Result<()> {
                     .iter()
                     .find(|(_, m)| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
                     .expect("couldn't find game in manifest");
+                debug!("found game manifest for {name}\n{game:#?}");
                 let info = match calc_sync_info(game, app_id) {
                     Ok(v) => v,
                     Err(e) => {
-                        error!("failed to get information about game");
+                        error!("failed to get information about game: {e}");
                         return Err(e);
                     }
                 };
