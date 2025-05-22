@@ -1,19 +1,23 @@
 use std::{
+    collections::HashMap,
     env::home_dir,
     fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter},
     path::PathBuf,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
+use chrono::{DateTime, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
+    backends::{self, StorageBackend, filesystem::FilesystemStore},
     config::{Config, SteamId, default_manifest_url},
-    manifest::{GameManifest, GameManifests, Store},
-    paths::{cache_dir, log_dir},
+    manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
+    paths::{cache_dir, log_dir, steam_dir},
 };
 use clap::Parser;
-use tracing::info;
+use itertools::Itertools;
+use tracing::{error, info};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn grab_manifest(url: &str) -> Result<String> {
@@ -83,14 +87,114 @@ fn get_game_manifests() -> Result<GameManifests> {
     }
 }
 
-struct SyncInfo {
-    files: Vec<PathBuf>,
+struct SyncInfo<'f> {
+    files: Vec<(PathBuf, &'f [FileTag])>,
     game_name: String,
 }
 
-fn calc_sync_info(manifest: &GameManifest) -> SyncInfo {
-    //let basis = manifest.files
-    todo!()
+impl<'f> SyncInfo<'f> {
+    fn download(&self, backend: &impl StorageBackend) -> Result<()> {
+        // check that we are not overwriting anything
+        if let Some(cloud_time) = backend.read_sync_time()? {
+            let mod_times: Vec<_> = self
+                .files
+                .iter()
+                .map(|(f, _)| f)
+                .map(fs::metadata)
+                .map_ok(|m| m.modified())
+                .flatten()
+                .collect::<Result<_, std::io::Error>>()?;
+            if let Some(newest_local) = mod_times
+                .iter()
+                .max()
+                .map(|t| DateTime::<Utc>::from(t.to_owned()))
+            {
+                if newest_local > cloud_time {
+                    error!("newer than local");
+                    bail!("newer than local!");
+                }
+            }
+        }
+
+        for (local_path, _) in &self.files {
+            let data = backend.read_file(local_path)?;
+            fs::write(local_path, &data)?;
+        }
+        Ok(())
+    }
+    fn upload(&self, backend: &mut impl StorageBackend) -> Result<()> {
+        if let Some(cloud_time) = backend.read_sync_time()? {
+            let mod_times: Vec<_> = self
+                .files
+                .iter()
+                .map(|(f, _)| f)
+                .map(fs::metadata)
+                .map_ok(|m| m.modified())
+                .flatten()
+                .collect::<Result<_, std::io::Error>>()?;
+            if let Some(newest_local) = mod_times
+                .iter()
+                .max()
+                .map(|t| DateTime::<Utc>::from(t.to_owned()))
+            {
+                if newest_local < cloud_time {
+                    error!("older than local");
+                    bail!("older than local!");
+                }
+            }
+        }
+        for (local_path, _) in &self.files {
+            let data = fs::read(local_path)?;
+            backend.write_file(local_path, &data)?;
+        }
+        Ok(())
+    }
+}
+
+fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> {
+    let steam_info = steam_dir()?;
+    let (steam_app_manifest, steam_app_lib) = steam_info
+        .find_app(app_id.id())?
+        .ok_or_else(|| anyhow!("could not find steam app with id '{app_id}'"))?;
+
+    let app_id_str = app_id.to_string();
+    let info = TemplateInfo {
+        win_prefix: steam_app_lib
+            .path()
+            .join("steamapps")
+            .join("compatdata")
+            .join(app_id.to_string())
+            .join("pfx")
+            .join("drive_c"),
+        win_user: "steamuser".to_owned(),
+        base_dir: steam_app_lib.resolve_app_dir(&steam_app_manifest),
+        steam_root: Some(steam_app_lib.path()),
+        store_user_id: Some(&app_id_str),
+    };
+    let files = manifest
+        .files
+        .iter()
+        .filter(|(_, p)| {
+            p.preds.iter().all(|p| {
+                p.sat(PlatformInfo {
+                    store: Some(Store::Steam),
+                    wine: true, // assume wine true and filter out when it's not later
+                })
+            })
+        })
+        .map(|(filename, cfg)| {
+            let fname = filename.apply_substs(&info)?;
+            Ok((PathBuf::from(fname), cfg.tags.as_slice()))
+        })
+        .filter_ok(|(filename, _)| !filename.is_dir() || fs::exists(filename).unwrap())
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(SyncInfo {
+        files,
+        game_name: steam_app_manifest
+            .name
+            .ok_or_else(|| anyhow!("failed to get app name"))?,
+    })
 }
 
 fn main() -> anyhow::Result<()> {
@@ -133,16 +237,29 @@ fn main() -> anyhow::Result<()> {
                     .values()
                     .find(|m| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
                     .expect("couldn't find game in manifest");
+                let info = match calc_sync_info(game, app_id) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("failed to get information about game");
+                        return Err(e);
+                    }
+                };
+                let mut backend = FilesystemStore::new(
+                    dirs::data_dir().unwrap().join("cinc").join("local-store"),
+                )?;
+                info.download(&backend);
+
+                let mut c = std::process::Command::new(&command[0])
+                    .args(command.iter().skip(1))
+                    .spawn()
+                    .unwrap();
+                c.wait().unwrap();
+
+                info.upload(&mut backend);
                 //game.files
             } else {
                 todo!()
             }
-
-            let mut c = std::process::Command::new(&command[0])
-                .args(command.iter().skip(1))
-                .spawn()
-                .unwrap();
-            c.wait().unwrap();
         }
     }
     Ok(())

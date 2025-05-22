@@ -1,4 +1,8 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -10,12 +14,19 @@ pub struct GameManifest {
     pub steam: Option<SteamInfo>,
     pub launch: Option<HashMap<TemplatePath, Vec<LaunchConfig>>>,
     pub cloud: Option<HashMap<Store, bool>>,
-    pub files: Option<HashMap<TemplatePath, FileConfig>>,
+    #[serde(default)]
+    pub files: HashMap<TemplatePath, FileConfig>,
 }
 
 /// Path which may contain substitutions such as <base> or <winLocalAppData>
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TemplatePath(String);
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct PlatformInfo {
+    pub store: Option<Store>,
+    pub wine: bool,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LaunchConfig {
@@ -23,8 +34,8 @@ pub struct LaunchConfig {
     pub preds: Vec<LaunchPredicate>,
 }
 impl LaunchConfig {
-    pub fn sat(&self, curr_store: Option<Store>) -> bool {
-        self.preds.iter().all(|p| p.sat(curr_store))
+    pub fn sat(&self, info: PlatformInfo) -> bool {
+        self.preds.iter().all(|p| p.sat(info))
     }
 }
 
@@ -36,10 +47,10 @@ pub struct LaunchPredicate {
 }
 
 impl LaunchPredicate {
-    pub fn sat(&self, curr_store: Option<Store>) -> bool {
+    pub fn sat(&self, info: PlatformInfo) -> bool {
         self.bit.map(|b| b.sat()).unwrap_or(true)
-            && self.os.map(|o| o.sat()).unwrap_or(true)
-            && (curr_store.is_none() || (self.store.is_none() || curr_store == self.store))
+            && self.os.map(|o| o.sat(info.wine)).unwrap_or(true)
+            && (info.store.is_none() || (self.store.is_none() || info.store == self.store))
     }
 }
 
@@ -70,7 +81,11 @@ pub enum Os {
 }
 
 impl Os {
-    pub fn sat(self) -> bool {
+    pub fn sat(self, wine: bool) -> bool {
+        if wine && self == Os::Windows {
+            return true;
+        }
+
         #[cfg(target_os = "windows")]
         let target = Self::Windows;
         #[cfg(target_os = "macos")]
@@ -131,19 +146,19 @@ pub enum TemplateError {
     UnknownVariable(String),
 }
 
-pub struct TemplateInfo {
-    win_prefix: PathBuf,
-    win_user: String,
-    base_dir: PathBuf,
-    steam_root: Option<PathBuf>,
-    store_user_id: Option<String>,
+pub struct TemplateInfo<'p> {
+    pub win_prefix: PathBuf,
+    pub win_user: String,
+    pub base_dir: PathBuf,
+    pub steam_root: Option<&'p Path>,
+    pub store_user_id: Option<&'p str>,
 }
 
 impl TemplatePath {
     pub fn new(s: String) -> Self {
         Self(s)
     }
-    pub fn apply_substs(self, info: &TemplateInfo) -> Result<String, TemplateError> {
+    pub fn apply_substs(&self, info: &TemplateInfo) -> Result<String, TemplateError> {
         let mut end = 0;
         let mut substs = Vec::new();
         while let Some(start) = self.0[end..].find('<').map(|s| s + end) {
@@ -182,14 +197,13 @@ impl TemplatePath {
                 "base" => info.base_dir.clone(),
                 "root" => info
                     .steam_root
-                    .as_ref()
                     .ok_or(TemplateError::VariableNotAvailable("steam root"))?
-                    .clone(),
+                    .to_owned(),
                 "storeUserId" => info
                     .store_user_id
                     .as_ref()
                     .ok_or(TemplateError::VariableNotAvailable("store user id"))?
-                    .clone()
+                    .to_owned()
                     .into(),
                 _ => return Err(TemplateError::UnknownVariable(var.to_owned())),
             };
@@ -213,6 +227,8 @@ impl TemplatePath {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::{TemplateInfo, TemplatePath};
 
     #[test]
@@ -226,8 +242,8 @@ mod tests {
                 win_prefix: "".into(),
                 win_user: "".to_owned(),
                 base_dir: "".into(),
-                steam_root: Some(root.into()),
-                store_user_id: Some(user_id.to_owned()),
+                steam_root: Some(&PathBuf::from(root)),
+                store_user_id: Some(user_id),
             })
             .unwrap();
         assert_eq!(expected, got);

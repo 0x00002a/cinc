@@ -7,8 +7,10 @@ rust-version = "1.87.0"
 [dependencies]
 anyhow = "1.0.98"
 bincode = { version = "2.0.1", features = ["serde"] }
+chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.38", features = ["derive"] }
 dirs = "6.0.0"
+itertools = "0.14.0"
 reqwest = { version = "0.12.15", features = ["blocking"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yaml = "0.9.34"
