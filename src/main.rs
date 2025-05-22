@@ -167,9 +167,13 @@ impl<'f> SyncInfo<'f> {
             ..
         } in &self.files
         {
-            debug!("uploading {local_path:?} to the cloud...");
-            let data = fs::read(local_path)?;
-            backend.write_file(remote_path, &data)?;
+            if fs::exists(local_path)? {
+                debug!("uploading {local_path:?} to the cloud...");
+                let data = fs::read(local_path)?;
+                backend.write_file(remote_path, &data)?;
+            } else {
+                debug!("not uploading {local_path:?} because it doesn't exist");
+            }
         }
         Ok(())
     }
@@ -216,75 +220,48 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         xdg_config: Some("xdg_config".into()),
         xdg_data: Some("xdg_data".into()),
     };
-    let files = manifest
-        .files
-        .iter()
-        .filter(|(_, p)| {
-            p.preds.iter().all(|p| {
-                p.sat(PlatformInfo {
-                    store: Some(Store::Steam),
-                    wine: true, // assume wine true and filter out when it's not later
-                })
+    let mut files = Vec::new();
+    for (filename, cfg) in &manifest.files {
+        if !cfg.preds.iter().all(|p| {
+            p.sat(PlatformInfo {
+                store: Some(Store::Steam),
+                wine: true, // assume wine true and filter out when it's not later
             })
-        })
-        .map(|(filename, cfg)| {
-            let fname = filename.apply_substs(&local_info)?;
-            let remote_name = filename.apply_substs(&remote_info)?;
-            Ok::<_, anyhow::Error>(FileInfo {
-                local_path: fname.into(),
-                remote_path: remote_name.into(),
-                tags: cfg.tags.as_slice(),
-            })
-        })
-        .filter_ok(
-            |FileInfo {
-                 local_path: filename,
-                 ..
-             }| {
-                let ok = fs::exists(filename).unwrap();
-                if !ok {
-                    debug!("rejecting {filename:#?} because it doesn't exist");
-                }
-                ok
-            },
-        )
-        .map_ok(
-            |FileInfo {
-                 local_path: fname,
-                 remote_path,
-                 tags,
-             }| {
-                walkdir::WalkDir::new(fname.clone())
-                    .follow_links(false)
-                    .into_iter()
-                    .filter_ok(|d| !d.path().is_dir())
-                    .map_ok(move |e| {
-                        let p = e.path();
-                        if !fname.is_dir() {
-                            assert_eq!(&fname, p);
-                            return FileInfo {
-                                local_path: fname.clone(),
-                                remote_path: remote_path.clone(),
-                                tags,
-                            };
-                        }
-                        let postfix = extract_postfix(&fname, p);
-                        let rp = remote_path.join_good(postfix);
-                        assert!(!rp.is_dir(), "{rp:?} {remote_path:?}  {p:?}");
-                        assert!(!p.is_dir());
+        }) {
+            continue;
+        }
+        let fname = filename.apply_substs(&local_info)?;
+        let remote_name = filename.apply_substs(&remote_info)?;
+        let info = FileInfo {
+            local_path: fname.into(),
+            remote_path: remote_name.into(),
+            tags: cfg.tags.as_slice(),
+        };
+        if !info.local_path.is_dir() && !fs::exists(&info.local_path)? {
+            continue;
+        }
 
-                        FileInfo {
-                            local_path: e.path().to_owned(),
-                            remote_path: rp,
-                            tags,
-                        }
-                    })
-                    .map(|r| r.map_err(|e| e.into()))
-            },
-        )
-        .flatten_ok()
-        .flatten()
-        .collect::<Result<Vec<_>>>()?;
+        for r in walkdir::WalkDir::new(&info.local_path).follow_links(false) {
+            let dir = r?;
+            if dir.path().is_dir() {
+                continue;
+            }
+
+            let fname = &info.local_path;
+            let remote_path = &info.remote_path;
+            let p = dir.path();
+            let postfix = extract_postfix(fname, p);
+            let rp = remote_path.join_good(postfix);
+            assert!(!rp.is_dir(), "{rp:?} {remote_path:?}  {p:?}");
+            assert!(!p.is_dir());
+
+            files.push(FileInfo {
+                local_path: dir.path().to_owned(),
+                remote_path: rp,
+                tags: info.tags,
+            })
+        }
+    }
 
     Ok(SyncInfo {
         files,
