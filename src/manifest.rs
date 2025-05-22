@@ -166,7 +166,6 @@ impl TemplatePath {
                 .find('>')
                 .ok_or(TemplateError::NoClosingDelim)?
                 + end;
-            println!("{start}-{end}");
             let var = &self.0[start + 1..end];
             let repl = match var {
                 "xdgData" => dirs::data_dir()
@@ -209,7 +208,6 @@ impl TemplatePath {
             };
             substs.push((start, end, repl));
             end += 1;
-            //println!("repl: {repl}");
         }
 
         // rebuild string with substitions

@@ -1,7 +1,5 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use fs_err as fs;
+use std::path::{Path, PathBuf};
 
 use super::{Result, StorageBackend};
 
@@ -10,7 +8,7 @@ pub struct FilesystemStore {
 }
 impl FilesystemStore {
     pub fn new(root: PathBuf) -> Result<Self, std::io::Error> {
-        if !fs::exists(&root)? {
+        if !std::fs::exists(&root)? {
             fs::create_dir_all(&root)?;
         }
         Ok(Self { root })
@@ -31,6 +29,6 @@ impl StorageBackend for FilesystemStore {
     }
 
     fn exists(&self, f: &Path) -> Result<bool> {
-        Ok(fs::exists(f)?)
+        Ok(std::fs::exists(f)?)
     }
 }

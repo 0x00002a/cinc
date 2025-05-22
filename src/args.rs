@@ -28,7 +28,8 @@ pub struct LaunchArgs {
         long = "platform",
         short = 'p',
         help = "Platform game is running on",
-        required = false
+        required = false,
+        default_value = "auto"
     )]
     pub platform: PlatformOpt,
 

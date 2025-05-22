@@ -94,6 +94,7 @@ struct SyncInfo<'f> {
 
 impl<'f> SyncInfo<'f> {
     fn download(&self, backend: &impl StorageBackend) -> Result<()> {
+        info!("downloading files from cloud...");
         // check that we are not overwriting anything
         if let Some(cloud_time) = backend.read_sync_time()? {
             let mod_times: Vec<_> = self
@@ -117,12 +118,17 @@ impl<'f> SyncInfo<'f> {
         }
 
         for (local_path, _) in &self.files {
-            let data = backend.read_file(local_path)?;
-            fs::write(local_path, &data)?;
+            assert!(!local_path.is_dir());
+            if backend.exists(local_path)? {
+                let data = backend.read_file(local_path)?;
+                fs::write(local_path, &data)?;
+            }
         }
         Ok(())
     }
     fn upload(&self, backend: &mut impl StorageBackend) -> Result<()> {
+        info!("uploading files to cloud...");
+        // check that we are not overwriting anything local that is newer
         if let Some(cloud_time) = backend.read_sync_time()? {
             let mod_times: Vec<_> = self
                 .files
@@ -184,9 +190,18 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         })
         .map(|(filename, cfg)| {
             let fname = filename.apply_substs(&info)?;
-            Ok((PathBuf::from(fname), cfg.tags.as_slice()))
+            Ok::<_, anyhow::Error>((PathBuf::from(fname), cfg.tags.as_slice()))
         })
-        .filter_ok(|(filename, _)| !filename.is_dir() || fs::exists(filename).unwrap())
+        .filter_ok(|(filename, _)| fs::exists(filename).unwrap())
+        .map_ok(|(fname, tags)| {
+            walkdir::WalkDir::new(fname)
+                .into_iter()
+                .filter_ok(|d| !d.path().is_dir())
+                .map_ok(move |e| (e.path().to_owned(), tags))
+                .map(|r| r.map_err(|e| e.into()))
+        })
+        .flatten_ok()
+        .flatten()
         .collect::<Result<Vec<_>>>()?;
 
     Ok(SyncInfo {
@@ -233,9 +248,9 @@ fn main() -> anyhow::Result<()> {
                             .expect("failed to parse app id")
                     })
                     .expect("couldn't find steam id");
-                let game = manifests
-                    .values()
-                    .find(|m| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
+                let (name, game) = manifests
+                    .iter()
+                    .find(|(_, m)| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
                     .expect("couldn't find game in manifest");
                 let info = match calc_sync_info(game, app_id) {
                     Ok(v) => v,
@@ -245,7 +260,11 @@ fn main() -> anyhow::Result<()> {
                     }
                 };
                 let mut backend = FilesystemStore::new(
-                    dirs::data_dir().unwrap().join("cinc").join("local-store"),
+                    dirs::data_dir()
+                        .unwrap()
+                        .join("cinc")
+                        .join("local-store")
+                        .join(name),
                 )?;
                 info.download(&backend)?;
 
