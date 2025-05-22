@@ -99,23 +99,26 @@ struct SyncInfo<'f> {
 }
 
 impl<'f> SyncInfo<'f> {
+    fn get_modified_times(&self) -> Result<Vec<DateTime<Utc>>> {
+        self.files
+            .iter()
+            .map(|f| &f.local_path)
+            .map(fs::metadata)
+            .map_ok(|m| Ok(DateTime::<Utc>::from(m.modified()?)))
+            .flatten()
+            .collect::<Result<_, std::io::Error>>()
+            .map_err(|e| e.into())
+    }
+
+    fn get_latest_modified_time(&self) -> Result<Option<DateTime<Utc>>> {
+        Ok(self.get_modified_times()?.into_iter().max())
+    }
+
     fn download(&self, backend: &impl StorageBackend) -> Result<()> {
         info!("downloading files from cloud...");
         // check that we are not overwriting anything
         if let Some(cloud_time) = backend.read_sync_time()? {
-            let mod_times: Vec<_> = self
-                .files
-                .iter()
-                .map(|f| &f.local_path)
-                .map(fs::metadata)
-                .map_ok(|m| m.modified())
-                .flatten()
-                .collect::<Result<_, std::io::Error>>()?;
-            if let Some(newest_local) = mod_times
-                .iter()
-                .max()
-                .map(|t| DateTime::<Utc>::from(t.to_owned()))
-            {
+            if let Some(newest_local) = self.get_latest_modified_time()? {
                 if newest_local > cloud_time {
                     error!("newer than local");
                     bail!("newer than local!");
@@ -141,26 +144,19 @@ impl<'f> SyncInfo<'f> {
     fn upload(&self, backend: &mut impl StorageBackend) -> Result<()> {
         info!("uploading files to cloud...");
         // check that we are not overwriting anything local that is newer
-        if let Some(cloud_time) = backend.read_sync_time()? {
-            let mod_times: Vec<_> = self
-                .files
-                .iter()
-                .map(|f| &f.local_path)
-                .map(fs::metadata)
-                .map_ok(|m| m.modified())
-                .flatten()
-                .collect::<Result<_, std::io::Error>>()?;
-            if let Some(newest_local) = mod_times
-                .iter()
-                .max()
-                .map(|t| DateTime::<Utc>::from(t.to_owned()))
-            {
+        let prev_write = backend.read_sync_time()?;
+        if let Some(cloud_time) = prev_write {
+            if let Some(newest_local) = self.get_latest_modified_time()? {
                 if newest_local < cloud_time {
                     error!("older than local");
                     bail!("older than local!");
                 }
             }
         }
+        let latest_write = chrono::Local::now().to_utc();
+        // need to do this before any of the others
+        backend.write_sync_time(&latest_write)?;
+
         for FileInfo {
             local_path,
             remote_path,
