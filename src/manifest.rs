@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, env, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -125,11 +125,19 @@ pub enum TemplateError {
     NoClosingDelim,
     #[error("failed to locate directory for '{0}'")]
     FailedToLocateDir(String),
+    #[error("tried to substitute using a variable that is not available on this system '{0}'")]
+    VariableNotAvailable(&'static str),
     #[error("unknown template variable '{0}'")]
     UnknownVariable(String),
 }
 
-pub struct TemplateInfo {}
+pub struct TemplateInfo {
+    win_prefix: PathBuf,
+    win_user: String,
+    base_dir: PathBuf,
+    steam_root: Option<PathBuf>,
+    store_user_id: Option<String>,
+}
 
 impl TemplatePath {
     pub fn new(s: String) -> Self {
@@ -137,6 +145,7 @@ impl TemplatePath {
     }
     pub fn apply_substs(self, info: &TemplateInfo) -> Result<String, TemplateError> {
         let mut end = 0;
+        let mut substs = Vec::new();
         while let Some(start) = self.0[end..].find('<').map(|s| s + end) {
             end = self.0[end..]
                 .find('>')
@@ -146,27 +155,81 @@ impl TemplatePath {
             let var = &self.0[start + 1..end];
             let repl = match var {
                 "xdgData" => dirs::data_dir()
-                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?
-                    .to_str()
-                    .unwrap()
-                    .to_owned(),
+                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
+                "xdgConfig" => dirs::config_dir()
+                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
+
+                "home" => env::home_dir()
+                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
+                "winAppData" => info
+                    .win_prefix
+                    .join("Users")
+                    .join(&info.win_user)
+                    .join("AppData")
+                    .join("Roaming"),
+
+                "winLocalAppData" => info
+                    .win_prefix
+                    .join("users")
+                    .join(&info.win_user)
+                    .join("AppData")
+                    .join("Local"),
+                "winDocuments" => info
+                    .win_prefix
+                    .join("users")
+                    .join(&info.win_user)
+                    .join("Documents"),
+                "base" => info.base_dir.clone(),
+                "root" => info
+                    .steam_root
+                    .as_ref()
+                    .ok_or(TemplateError::VariableNotAvailable("steam root"))?
+                    .clone(),
+                "storeUserId" => info
+                    .store_user_id
+                    .as_ref()
+                    .ok_or(TemplateError::VariableNotAvailable("store user id"))?
+                    .clone()
+                    .into(),
                 _ => return Err(TemplateError::UnknownVariable(var.to_owned())),
             };
+            substs.push((start, end, repl));
             end += 1;
-            println!("repl: {repl}");
+            //println!("repl: {repl}");
         }
 
-        todo!()
+        // rebuild string with substitions
+        let mut out = String::new();
+        let mut prev = 0;
+        for (start, end, repl) in substs {
+            out += &self.0[prev..start];
+            out += repl.to_str().unwrap();
+            prev = end + 1;
+        }
+        out += &self.0[prev..self.0.len()];
+        Ok(out)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::TemplatePath;
+    use super::{TemplateInfo, TemplatePath};
 
     #[test]
-    fn template_apply_substs() {
-        let p = TemplatePath::new("hello <xdgData> <there>".to_owned());
-        p.apply_substs(&super::TemplateInfo {}).unwrap();
+    fn repl_template() {
+        let root = "hello";
+        let user_id = "world";
+        let expected = format!("{root}/hmm/{user_id}");
+        let p = TemplatePath::new("<root>/hmm/<storeUserId>".to_owned());
+        let got = p
+            .apply_substs(&TemplateInfo {
+                win_prefix: "".into(),
+                win_user: "".to_owned(),
+                base_dir: "".into(),
+                steam_root: Some(root.into()),
+                store_user_id: Some(user_id.to_owned()),
+            })
+            .unwrap();
+        assert_eq!(expected, got);
     }
 }
