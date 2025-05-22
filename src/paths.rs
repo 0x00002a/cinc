@@ -40,7 +40,7 @@ pub fn log_dir() -> PathBuf {
 /// # Panics
 /// If base is not a directory
 /// If base is not a prefix of child
-pub fn extract_postfix(base: &Path, child: &Path) -> PathBuf {
+pub fn extract_postfix<'p>(base: &'p Path, child: &'p Path) -> &'p Path {
     assert!(base.is_dir());
     assert!(
         base.components()
@@ -48,18 +48,22 @@ pub fn extract_postfix(base: &Path, child: &Path) -> PathBuf {
             .all(|(a, b)| a == b),
         "child is not prefix of base"
     );
+    child.strip_prefix(base).unwrap()
+}
 
-    let mut prefix_comp_len = child.components().count() - base.components().count();
-    if !child.is_dir() {
-        prefix_comp_len -= 1;
+pub trait PathExt {
+    fn join_good(&self, other: impl Into<PathBuf>) -> PathBuf;
+}
+impl PathExt for Path {
+    /// Version of join that doesn't remove replace if absolute
+    fn join_good(&self, other: impl Into<PathBuf>) -> PathBuf {
+        let other = other.into();
+        if !other.is_absolute() {
+            self.join(other)
+        } else {
+            self.join(".".to_owned() + other.to_str().unwrap())
+        }
     }
-    let prefix_len: usize = child
-        .components()
-        .take(prefix_comp_len)
-        .map(|p| p.as_os_str().len())
-        .sum();
-    let postfix = &child.as_os_str().as_bytes()[prefix_len..];
-    PathBuf::from(OsStr::from_bytes(postfix))
 }
 
 #[cfg(test)]

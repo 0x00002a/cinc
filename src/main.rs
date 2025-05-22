@@ -13,7 +13,7 @@ use cinc::{
     backends::{self, StorageBackend, filesystem::FilesystemStore},
     config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
-    paths::{cache_dir, extract_postfix, log_dir, steam_dir},
+    paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
 };
 use clap::Parser;
 use itertools::Itertools;
@@ -269,9 +269,8 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
                             };
                         }
                         let postfix = extract_postfix(&fname, p);
-                        let rp = remote_path.join(postfix);
+                        let rp = remote_path.join_good(postfix);
                         assert!(!rp.is_dir(), "{rp:?} {remote_path:?}  {p:?}");
-                        debug!("remote path: {rp:?} {remote_path:?} {p:?} ");
                         assert!(!p.is_dir());
 
                         FileInfo {
