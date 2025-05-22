@@ -47,9 +47,9 @@ pub trait StorageBackend {
 }
 
 impl BackendInfo {
-    pub fn to_backend(&self) -> Box<dyn StorageBackend> {
-        match self {
-            BackendInfo::Filesystem { root } => Box::new(FilesystemStore::new(root.to_owned())),
-        }
+    pub fn to_backend(&self) -> Result<Box<dyn StorageBackend>> {
+        Ok(match self {
+            BackendInfo::Filesystem { root } => Box::new(FilesystemStore::new(root.to_owned())?),
+        })
     }
 }

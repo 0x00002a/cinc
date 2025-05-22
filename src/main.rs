@@ -247,7 +247,7 @@ fn main() -> anyhow::Result<()> {
                 let mut backend = FilesystemStore::new(
                     dirs::data_dir().unwrap().join("cinc").join("local-store"),
                 )?;
-                info.download(&backend);
+                info.download(&backend)?;
 
                 let mut c = std::process::Command::new(&command[0])
                     .args(command.iter().skip(1))
@@ -255,7 +255,7 @@ fn main() -> anyhow::Result<()> {
                     .unwrap();
                 c.wait().unwrap();
 
-                info.upload(&mut backend);
+                info.upload(&mut backend)?;
                 //game.files
             } else {
                 todo!()
