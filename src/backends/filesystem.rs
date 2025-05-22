@@ -28,6 +28,7 @@ impl StorageBackend for FilesystemStore {
     fn write_file(&mut self, at: &std::path::Path, bytes: &[u8]) -> Result<()> {
         let p = self.filename(at);
         debug!("writing to {p:?}");
+        assert!(!p.is_dir());
         if !std::fs::exists(p.parent().unwrap())? {
             fs::create_dir_all(p.parent().unwrap())?;
         }

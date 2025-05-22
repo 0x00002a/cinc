@@ -150,6 +150,9 @@ pub struct TemplateInfo<'p> {
     pub base_dir: PathBuf,
     pub steam_root: Option<&'p Path>,
     pub store_user_id: Option<&'p str>,
+    pub home_dir: Option<PathBuf>,
+    pub xdg_config: Option<PathBuf>,
+    pub xdg_data: Option<PathBuf>,
 }
 
 impl TemplatePath {
@@ -166,12 +169,21 @@ impl TemplatePath {
                 + end;
             let var = &self.0[start + 1..end];
             let repl = match var {
-                "xdgData" => dirs::data_dir()
+                "xdgData" => info
+                    .xdg_data
+                    .to_owned()
+                    .or_else(dirs::data_dir)
                     .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
-                "xdgConfig" => dirs::config_dir()
+                "xdgConfig" => info
+                    .xdg_config
+                    .to_owned()
+                    .or_else(dirs::config_dir)
                     .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
 
-                "home" => env::home_dir()
+                "home" => info
+                    .home_dir
+                    .to_owned()
+                    .or_else(env::home_dir)
                     .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
                 "winAppData" => info
                     .win_prefix
@@ -240,6 +252,9 @@ mod tests {
                 base_dir: "".into(),
                 steam_root: Some(&PathBuf::from(root)),
                 store_user_id: Some(user_id),
+                home_dir: None,
+                xdg_config: None,
+                xdg_data: None,
             })
             .unwrap();
         assert_eq!(expected, got);

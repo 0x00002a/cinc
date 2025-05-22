@@ -131,7 +131,7 @@ impl<'f> SyncInfo<'f> {
         {
             assert!(!local_path.is_dir());
             debug!("downloading {local_path:?} from cloud...");
-            if backend.exists(local_path)? {
+            if backend.exists(remote_path)? {
                 let data = backend.read_file(remote_path)?;
                 fs::write(local_path, &data)?;
             }
@@ -198,6 +198,10 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         base_dir: steam_app_lib.resolve_app_dir(&steam_app_manifest),
         steam_root: Some(steam_app_lib.path()),
         store_user_id: store_user_id.as_deref(),
+
+        home_dir: None,
+        xdg_config: None,
+        xdg_data: None,
     };
 
     // remote template substs
@@ -207,6 +211,10 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         base_dir: "base_dir".into(),
         steam_root: Some(Path::new("steam_root")),
         store_user_id: store_user_id.as_deref(),
+
+        home_dir: Some("home_dir".into()),
+        xdg_config: Some("xdg_config".into()),
+        xdg_data: Some("xdg_data".into()),
     };
     let files = manifest
         .files
@@ -253,19 +261,24 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
                     .map_ok(move |e| {
                         let p = e.path();
                         let mut common = p
+                            .parent()
+                            .unwrap()
                             .ancestors()
                             .zip(fname.ancestors())
                             .take_while(|(a, b)| a == b)
                             .map(|(a, _)| a)
                             .collect_vec();
                         common.reverse();
-                        let remote_path = common
-                            .into_iter()
-                            .fold(remote_path.clone(), |rp, c| rp.join(c));
+                        let rp = common
+                            .iter()
+                            .fold(remote_path.clone(), |rp, c| rp.join(c))
+                            .join(p.file_name().unwrap());
+                        assert!(!rp.is_dir(), "{rp:?} {remote_path:?} {common:#?} {p:?}");
+                        debug!("remote path: {rp:?} {remote_path:?} {p:?}  {common:#?}");
 
                         FileInfo {
                             local_path: e.path().to_owned(),
-                            remote_path,
+                            remote_path: rp,
                             tags,
                         }
                     })
