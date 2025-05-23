@@ -11,7 +11,7 @@ use cinc::{
     config::{Config, SteamId, default_manifest_url},
     manifest::{GameManifests, Store},
     paths::{cache_dir, log_dir},
-    sync::SyncInfo,
+    sync::SyncMgr,
     ui::{CincUi, SyncChoices, SyncIssueInfo},
 };
 use clap::Parser;
@@ -144,7 +144,7 @@ fn run() -> anyhow::Result<()> {
                     .find(|(_, m)| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
                     .expect("couldn't find game in manifest");
                 debug!("found game manifest for {name}\n{game:#?}");
-                let info = match SyncInfo::from_steam_game(game, app_id) {
+                let info = match SyncMgr::from_steam_game(game, app_id) {
                     Ok(v) => v,
                     Err(e) => {
                         error!("failed to get information about game: {e}");

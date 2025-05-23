@@ -32,11 +32,11 @@ impl<'f> FileInfo<'f> {
     }
 }
 
-pub struct SyncInfo<'f> {
+pub struct SyncMgr<'f> {
     files: Vec<FileInfo<'f>>,
 }
 
-impl<'f> SyncInfo<'f> {
+impl<'f> SyncMgr<'f> {
     pub fn from_steam_game(manifest: &'f GameManifest, app_id: SteamId) -> Result<Self> {
         let steam_info = steam_dir()?;
         let (steam_app_manifest, steam_app_lib) = steam_info
@@ -121,7 +121,7 @@ impl<'f> SyncInfo<'f> {
             }
         }
 
-        Ok(SyncInfo { files })
+        Ok(SyncMgr { files })
     }
     fn get_modified_times(&self) -> Result<Vec<DateTime<Utc>>> {
         self.files
