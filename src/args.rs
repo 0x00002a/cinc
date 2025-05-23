@@ -44,6 +44,9 @@ pub struct LaunchArgs {
         default_value = "auto"
     )]
     pub platform: PlatformOpt,
+    /// Don't upload after closing, this is a debug flag and is hidden from the user
+    #[arg(long = "debug-no-upload", hide = true, default_value = "false")]
+    pub no_upload: bool,
 
     #[arg(help = "Command to run the game, e.g. for steam pass as %command%")]
     pub command: Vec<String>,

@@ -183,8 +183,12 @@ fn run() -> anyhow::Result<()> {
                     .unwrap();
                 c.wait().unwrap();
 
-                for b in &mut backends {
-                    info.upload(b)?;
+                if !args.no_upload {
+                    for b in &mut backends {
+                        info.upload(b)?;
+                    }
+                } else {
+                    debug!("not uploading due to --debug-no-upload flag");
                 }
             } else {
                 todo!()
