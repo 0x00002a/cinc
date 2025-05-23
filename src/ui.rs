@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
 use egui::{Color32, RichText, ViewportCommand};
 
-pub struct SyncIssueInfo<'a> {
+pub struct SyncIssueInfo {
     pub local_time: DateTime<Utc>,
     pub remote_time: DateTime<Utc>,
-    pub remote_name: &'a str,
-    pub remote_last_writer: &'a str,
+    pub remote_name: String,
+    pub remote_last_writer: String,
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SyncChoices {
@@ -21,7 +21,7 @@ pub enum CincUi<'s> {
     Error(anyhow::Error),
     Panic(String),
     SyncIssue {
-        info: SyncIssueInfo<'s>,
+        info: SyncIssueInfo,
         on_continue: Box<dyn FnMut(&mut SyncChoices)>,
         on_upload: Box<dyn FnMut(&mut SyncChoices)>,
         choice_store: &'s mut SyncChoices,

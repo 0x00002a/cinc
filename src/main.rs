@@ -113,31 +113,33 @@ impl<'f> SyncInfo<'f> {
     fn get_latest_modified_time(&self) -> Result<Option<DateTime<Utc>>> {
         Ok(self.get_modified_times()?.into_iter().max())
     }
-
-    fn download(&self, backend: &impl StorageBackend) -> Result<()> {
-        info!("downloading files from cloud...");
-        // check that we are not overwriting anything
+    fn are_local_files_newer(
+        &self,
+        backend: &impl StorageBackend,
+    ) -> Result<Option<SyncIssueInfo>> {
         if let Some(cloud_time) = backend.read_sync_time()? {
             if let Some(newest_local) = self.get_latest_modified_time()? {
                 if newest_local > cloud_time.last_write_timestamp {
-                    warn!(
-                        "found local files newer than local, showing confirmation box to the user..."
-                    );
-                    match spawn_sync_confirm(SyncIssueInfo {
+                    return Ok(Some(SyncIssueInfo {
                         local_time: newest_local,
                         remote_time: cloud_time.last_write_timestamp,
-                        remote_name: "todo",
-                        remote_last_writer: &cloud_time.last_write_hostname,
-                    })? {
-                        SyncChoices::Continue => {
-                            todo!()
-                        }
-                        SyncChoices::Upload => todo!(),
-                        SyncChoices::Exit => todo!(),
-                    }
+                        remote_name: "todo".to_owned(),
+                        remote_last_writer: cloud_time.last_write_hostname,
+                    }));
                 }
             }
         }
+        Ok(None)
+    }
+
+    fn download(
+        &self,
+        backend: &impl StorageBackend,
+        force_overwrite: bool,
+    ) -> Result<Option<SyncChoices>> {
+        info!("downloading files from cloud...");
+        // check that we are not overwriting anything
+        assert!(force_overwrite || self.are_local_files_newer(backend)?.is_none());
 
         for FileInfo {
             local_path,
@@ -152,7 +154,7 @@ impl<'f> SyncInfo<'f> {
                 fs::write(local_path, &data)?;
             }
         }
-        Ok(())
+        Ok(None)
     }
     fn upload(&self, backend: &mut impl StorageBackend) -> Result<()> {
         info!("uploading files to cloud...");
@@ -341,7 +343,26 @@ fn run() -> anyhow::Result<()> {
                     .iter()
                     .map(|b| b.to_backend(name))
                     .collect::<Result<Vec<_>, BackendError>>()?;
-                info.download(&backends[0])?;
+                let b = &backends[0];
+                if let Some(sync_info) = info.are_local_files_newer(b)? {
+                    warn!(
+                        "found local files newer than local, showing confirmation box to the user..."
+                    );
+
+                    match spawn_sync_confirm(sync_info)? {
+                        SyncChoices::Continue => {
+                            info.download(b, true)?;
+                        }
+                        SyncChoices::Upload => {
+                            info.upload(&mut backends[0])?;
+                        }
+                        SyncChoices::Exit => {
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    info.download(b, false)?;
+                }
 
                 let mut c = std::process::Command::new(&command[0])
                     .args(command.iter().skip(1))
@@ -362,10 +383,10 @@ fn run() -> anyhow::Result<()> {
         } => {
             let now = Local::now().to_utc();
             let r = spawn_sync_confirm(SyncIssueInfo {
-                remote_name,
+                remote_name: remote_name.to_owned(),
                 local_time: now,
                 remote_time: now,
-                remote_last_writer: last_writer,
+                remote_last_writer: last_writer.to_owned(),
             })?;
             println!("{r:?}");
         }
