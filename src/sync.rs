@@ -19,7 +19,7 @@ use crate::{
     ui::{SyncChoices, SyncIssueInfo},
 };
 
-const ARCHIVE_NAME: &str = "archive.tar.zst";
+const ARCHIVE_NAME: &str = "archive.tar.xz";
 const XZ_LEVEL: u32 = 5;
 const METADATA_NAME: &str = "file-meta.json";
 
