@@ -174,6 +174,7 @@ fn run() -> anyhow::Result<()> {
                 } else {
                     info.download(b, false)?;
                 }
+                drop(info); // its info is no longer valid after the command runs bc it may create new files
 
                 let mut c = std::process::Command::new(&command[0])
                     .args(command.iter().skip(1))
@@ -182,6 +183,13 @@ fn run() -> anyhow::Result<()> {
                 c.wait().unwrap();
 
                 if !args.no_upload {
+                    let info = match SyncMgr::from_steam_game(game, app_id) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("failed to get information about game: {e}");
+                            return Err(e);
+                        }
+                    };
                     for b in &mut backends {
                         info.upload(b)?;
                     }

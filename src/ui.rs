@@ -90,7 +90,7 @@ impl<'s> eframe::App for CincUi<'s> {
 If you continue, your local changes will be overwrite the remote changes when you close the game.
 If you download the remote changes your local files will be overwritten with the remote changes, if
 you have made any progress since the time displayed above for the remote changes, THIS WILL ERASE IT!!
-                ",
+                ".replace('\n', " "),
                     );
                     ui.label(
                         RichText::new("CONTINUE OR DOWNLOAD MAY RESULT IN DATA LOSS")

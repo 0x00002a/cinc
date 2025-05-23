@@ -33,6 +33,7 @@ struct FileMetaTable {
     entries: Vec<FileMetaEntry>,
 }
 
+#[derive(Clone, Debug)]
 pub struct FileInfo<'f> {
     local_path: PathBuf,
     remote_path: PathBuf,
