@@ -14,8 +14,11 @@ use cinc::{
     config::{BackendInfo, Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
+    ui::CincUi,
 };
 use clap::Parser;
+use eframe::NativeOptions;
+use egui::ViewportBuilder;
 use itertools::Itertools;
 use serde::Deserialize;
 use tracing::{debug, error, info};
@@ -288,8 +291,7 @@ fn read_config() -> Result<Config> {
         Ok(cfg)
     }
 }
-
-fn main() -> anyhow::Result<()> {
+fn run() -> anyhow::Result<()> {
     let args = CliArgs::parse();
 
     match &args.op {
@@ -353,4 +355,56 @@ fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn main() {
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(|s| s.to_owned())
+            .or_else(|| {
+                info.payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_owned())
+            });
+        if let Some(msg) = msg {
+            let _ = eframe::run_native(
+                "Cinc panic!",
+                NativeOptions {
+                    centered: true,
+                    viewport: ViewportBuilder::default()
+                        .with_always_on_top()
+                        .with_close_button(true)
+                        .with_minimize_button(false)
+                        .with_inner_size((200.0, 100.0)),
+
+                    persist_window: false,
+                    ..Default::default()
+                },
+                Box::new(|_cc| Ok(Box::new(CincUi::Panic(msg)))),
+            );
+        }
+
+        prev_hook(info);
+    }));
+    if let Err(e) = run() {
+        eframe::run_native(
+            "Cinc error",
+            NativeOptions {
+                centered: true,
+                viewport: ViewportBuilder::default()
+                    .with_always_on_top()
+                    .with_close_button(true)
+                    .with_minimize_button(false)
+                    .with_inner_size((200.0, 100.0)),
+
+                persist_window: false,
+                ..Default::default()
+            },
+            Box::new(|_cc| Ok(Box::new(CincUi::Error(e)))),
+        )
+        .expect("failed to open egui");
+    }
 }
