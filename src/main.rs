@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    backends::{self, ModifiedMetadata, StorageBackend, filesystem::FilesystemStore},
+    backends::{self, BackendError, ModifiedMetadata, StorageBackend, filesystem::FilesystemStore},
     config::{BackendInfo, Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
@@ -300,6 +300,10 @@ fn main() -> anyhow::Result<()> {
         }
         cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {
             init_file_logging()?;
+            let cfg = read_config()?;
+            if cfg.backends.is_empty() {
+                bail!("invalid config: at least one backend must be specified");
+            }
             let manifests = get_game_manifests()?;
             let platform = args.resolve_platform();
             if platform == Some(Store::Steam) {
@@ -327,14 +331,12 @@ fn main() -> anyhow::Result<()> {
                         return Err(e);
                     }
                 };
-                let mut backend = FilesystemStore::new(
-                    dirs::data_dir()
-                        .unwrap()
-                        .join("cinc")
-                        .join("local-store")
-                        .join(name),
-                )?;
-                info.download(&backend)?;
+                let mut backends = cfg
+                    .backends
+                    .iter()
+                    .map(|b| b.to_backend(name))
+                    .collect::<Result<Vec<_>, BackendError>>()?;
+                info.download(&backends[0])?;
 
                 let mut c = std::process::Command::new(&command[0])
                     .args(command.iter().skip(1))
@@ -342,8 +344,9 @@ fn main() -> anyhow::Result<()> {
                     .unwrap();
                 c.wait().unwrap();
 
-                info.upload(&mut backend)?;
-                //game.files
+                for b in &mut backends {
+                    info.upload(b)?;
+                }
             } else {
                 todo!()
             }

@@ -7,7 +7,8 @@ use crate::paths::steam_dir;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
-    pub backend: BackendInfo,
+    #[serde(alias = "backend")]
+    pub backends: Vec<BackendInfo>,
 
     #[serde(default = "default_manifest_url")]
     pub manifest_url: String,
@@ -15,7 +16,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            backend: Default::default(),
+            backends: vec![Default::default()],
             manifest_url: default_manifest_url(),
         }
     }

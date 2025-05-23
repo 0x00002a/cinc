@@ -74,6 +74,19 @@ pub trait StorageBackend {
         self.write_file(Path::new(SYNC_TIME_FILE), &data)
     }
 }
+impl StorageBackend for Box<dyn StorageBackend> {
+    fn write_file(&mut self, at: &Path, bytes: &[u8]) -> Result<()> {
+        self.as_mut().write_file(at, bytes)
+    }
+
+    fn read_file(&self, at: &Path) -> Result<Vec<u8>> {
+        self.as_ref().read_file(at)
+    }
+
+    fn exists(&self, f: &Path) -> Result<bool> {
+        self.as_ref().exists(f)
+    }
+}
 
 impl BackendInfo {
     pub fn to_backend(&self, game_name: &str) -> Result<Box<dyn StorageBackend>> {
