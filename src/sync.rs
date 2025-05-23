@@ -1,14 +1,14 @@
 use std::{
     fs,
-    io::prelude::*,
+    io::{BufReader, prelude::*},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
-use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use itertools::Itertools;
 use tracing::{debug, info, warn};
+use xz2::bufread::{XzDecoder, XzEncoder};
 
 use crate::{
     backends::{ModifiedMetadata, StorageBackend},
@@ -19,6 +19,7 @@ use crate::{
 };
 
 const ARCHIVE_NAME: &str = "archive.tar.zst";
+const XZ_LEVEL: u32 = 5;
 
 pub struct FileInfo<'f> {
     local_path: PathBuf,
@@ -216,7 +217,7 @@ impl<'f> SyncMgr<'f> {
     }
 
     fn decompress_files(&self, from: &[u8]) -> Result<Vec<u8>> {
-        let mut decoder = ZlibDecoder::new(from);
+        let mut decoder = XzDecoder::new(from);
         let mut buf = Vec::new();
         decoder.read_to_end(&mut buf)?;
         Ok(buf)
@@ -224,10 +225,10 @@ impl<'f> SyncMgr<'f> {
 
     fn compress_files(&self) -> Result<Vec<u8>> {
         let files = self.tar_files()?;
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&files)?;
-        let o = encoder.finish()?;
-        Ok(o)
+        let mut encoder = XzEncoder::new(BufReader::new(files.as_slice()), XZ_LEVEL);
+        let mut out = Vec::new();
+        encoder.read_to_end(&mut out)?;
+        Ok(out)
     }
 
     fn tar_files(&self) -> Result<Vec<u8>> {
