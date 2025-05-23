@@ -12,13 +12,13 @@ use cinc::{
     config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
-    ui::CincUi,
+    ui::{CincUi, SyncIssueInfo},
 };
 use clap::Parser;
 use eframe::NativeOptions;
 use egui::ViewportBuilder;
 use itertools::Itertools;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn grab_manifest(url: &str) -> Result<String> {
@@ -120,8 +120,12 @@ impl<'f> SyncInfo<'f> {
         if let Some(cloud_time) = backend.read_sync_time()? {
             if let Some(newest_local) = self.get_latest_modified_time()? {
                 if newest_local > cloud_time.last_write_timestamp {
-                    error!("newer than local");
-                    bail!("newer than local!");
+                    warn!(
+                        "found local files newer than local, showing confirmation box to the user..."
+                    );
+                    if !spawn_sync_confirm(SyncIssueInfo {})? {
+                        std::process::exit(0);
+                    }
                 }
             }
         }
@@ -148,7 +152,6 @@ impl<'f> SyncInfo<'f> {
         if let Some(cloud_time) = prev_write {
             if let Some(newest_local) = self.get_latest_modified_time()? {
                 if newest_local < cloud_time.last_write_timestamp {
-                    error!("older than local");
                     bail!("older than local!");
                 }
             }
@@ -344,6 +347,10 @@ fn run() -> anyhow::Result<()> {
                 todo!()
             }
         }
+        cinc::args::Operation::DebugSyncDialog => {
+            let r = spawn_sync_confirm(SyncIssueInfo {})?;
+            println!("{r}");
+        }
     }
     Ok(())
 }
@@ -363,6 +370,23 @@ fn spawn_popup(title: &str, state: CincUi) -> eframe::Result {
         },
         Box::new(|_cc| Ok(Box::new(state))),
     )
+}
+
+/// Spawn a dialog warning the user of sync issues and asking them whether to
+/// continue. Returns whether the user elected to continue
+fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<bool> {
+    let mut cont = false;
+    spawn_popup(
+        "Cloud conflict",
+        CincUi::SyncIssue {
+            info: SyncIssueInfo {},
+            on_continue: Box::new(|| {
+                cont = true;
+            }),
+        },
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    Ok(cont)
 }
 
 fn main() {

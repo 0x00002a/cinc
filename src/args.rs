@@ -14,6 +14,8 @@ pub struct CliArgs {
 pub enum Operation {
     Init {},
     Launch(LaunchArgs),
+    #[command(hide = true)]
+    DebugSyncDialog,
 }
 
 #[derive(Args, Clone)]
