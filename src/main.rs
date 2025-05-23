@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter},
+    process::exit,
     time::SystemTime,
 };
 
@@ -9,7 +10,7 @@ use chrono::Local;
 use cinc::{
     args::{CliArgs, LaunchArgs},
     backends::BackendError,
-    config::{Config, SteamId, default_manifest_url},
+    config::{BackendInfo, BackendTy, Config, SteamId, WebDavInfo, default_manifest_url},
     manifest::{GameManifests, Store},
     paths::{cache_dir, log_dir},
     sync::SyncMgr,
@@ -110,6 +111,21 @@ fn read_config() -> Result<Config> {
         let cfg = toml::from_str(&cfg_str).context("while deserialising config")?;
         Ok(cfg)
     }
+}
+
+fn write_cfg(cfg: &Config) -> Result<()> {
+    let cfg_dir = &dirs::config_dir()
+        .ok_or_else(|| anyhow!("could not find config dir"))?
+        .join("cinc");
+    fs::create_dir_all(cfg_dir)?;
+    let cfg_file = cfg_dir.join(CFG_FILE_NAME);
+    assert!(
+        std::fs::exists(&cfg_file)?,
+        "tried to write cfg but it doesn't exist"
+    );
+    let cfg = toml::to_string_pretty(cfg)?;
+    std::fs::write(&cfg_file, &cfg)?;
+    Ok(())
 }
 fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
@@ -220,6 +236,50 @@ fn run() -> anyhow::Result<()> {
                 remote_last_writer: last_writer.to_owned(),
             })?;
             println!("{r:?}");
+        }
+        cinc::args::Operation::BackendsConfig(backends_args) => {
+            let mut cfg = read_config()?;
+            match backends_args {
+                cinc::args::BackendsArgs::Add {
+                    name,
+                    ty,
+                    root,
+                    webdav_url,
+                    webdav_username,
+                    webdav_psk,
+                } => {
+                    let backend_ty = match ty {
+                        cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
+                            root: root.to_owned(),
+                        },
+                        cinc::config::BackendType::WebDav => BackendTy::WebDav(WebDavInfo {
+                            url: webdav_url.to_owned().expect("missing webdav url"),
+                            username: webdav_username.to_owned().expect("missing webdav username"),
+                            psk: webdav_psk.to_owned(),
+                            root: root.to_owned(),
+                        }),
+                    };
+                    let new_backend = BackendInfo {
+                        name: name.to_owned(),
+                        info: backend_ty,
+                    };
+                    cfg.backends.push(new_backend);
+                    write_cfg(&cfg)?;
+                }
+                cinc::args::BackendsArgs::List => {
+                    for b in &cfg.backends {
+                        println!("- {}", b.pretty_print());
+                    }
+                }
+                cinc::args::BackendsArgs::SetDefault { name } => {
+                    if !cfg.backends.iter().any(|b| &b.name == name) {
+                        eprintln!("backend '{name}' does not exist");
+                        exit(1);
+                    }
+                    cfg.default_backend = Some(name.to_owned());
+                    write_cfg(&cfg)?;
+                }
+            }
         }
     }
     Ok(())

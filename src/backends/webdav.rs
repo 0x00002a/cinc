@@ -31,7 +31,7 @@ impl WebDavStore {
                 .expect("failed to concat path");
         self.client
             .request(method, url)
-            .basic_auth(&self.cfg.username, Some(&self.cfg.psk))
+            .basic_auth(&self.cfg.username, self.cfg.psk.as_deref())
     }
 }
 

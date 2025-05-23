@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use webdav::WebDavStore;
 
-use crate::config::{BackendInfo, WebDavInfo};
+use crate::config::{BackendInfo, BackendTy, WebDavInfo};
 
 pub mod filesystem;
 pub mod webdav;
@@ -90,11 +90,9 @@ impl StorageBackend for Box<dyn StorageBackend> {
 
 impl BackendInfo {
     pub fn to_backend(&self, game_name: &str) -> Result<Box<dyn StorageBackend>> {
-        Ok(match self {
-            BackendInfo::Filesystem { root } => {
-                Box::new(FilesystemStore::new(root.join(game_name))?)
-            }
-            BackendInfo::WebDav(web_dav_info) => Box::new(WebDavStore::new(WebDavInfo {
+        Ok(match &self.info {
+            BackendTy::Filesystem { root } => Box::new(FilesystemStore::new(root.join(game_name))?),
+            BackendTy::WebDav(web_dav_info) => Box::new(WebDavStore::new(WebDavInfo {
                 root: web_dav_info.root.join(game_name),
                 ..web_dav_info.to_owned()
             })),

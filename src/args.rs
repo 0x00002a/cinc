@@ -29,6 +29,47 @@ pub enum Operation {
         #[arg(default_value = "debug writer", long)]
         last_writer: String,
     },
+    /// Configure backends
+    ///
+    /// all others are just mirrors that
+    /// are uploaded to. The one used for downloading can be specifically selected with --backend
+    #[command(name = "backends", subcommand)]
+    BackendsConfig(BackendsArgs),
+}
+
+#[derive(Subcommand, Clone)]
+pub enum BackendsArgs {
+    Add {
+        /// Name of the backend
+        #[arg(long = "name")]
+        name: String,
+
+        /// Type of the backend
+        #[arg(long = "type")]
+        ty: BackendType,
+
+        /// Root for the backend relative
+        #[arg(long = "root", default_value = "/")]
+        root: PathBuf,
+
+        /// Url for the webdav backend, required when type is webdev
+        #[arg(long = "webdav-url")]
+        webdav_url: Option<String>,
+
+        /// Username for the webdav backend, required when type is webdev
+        #[arg(long = "webdav-username")]
+        webdav_username: Option<String>,
+
+        /// Password for the webdav backend, required when type is webdev IF the endpoint requires password authentication
+        #[arg(long = "webdav-psk")]
+        webdav_psk: Option<String>,
+    },
+    List,
+    SetDefault {
+        /// Name of the backend
+        #[arg()]
+        name: String,
+    },
 }
 
 #[derive(Args, Clone)]
@@ -107,11 +148,12 @@ impl ValueEnum for BackendType {
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
         match self {
-            BackendType::Filesystem => {
-                Some(PossibleValue::new("filesystem").alias("fs").help(
-                    "filesystem backend which syncs the files to local folder, for debugging",
-                ))
-            }
+            BackendType::Filesystem => Some(
+                PossibleValue::new("filesystem")
+                    .alias("fs")
+                    .help("filesystem backend which copies the files to local folder"),
+            ),
+            BackendType::WebDav => Some(PossibleValue::new("webdav").help("webdav backend")),
         }
     }
 }

@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     #[serde(alias = "backend")]
     pub backends: Vec<BackendInfo>,
+    /// Default backend to use, defaults to the first backend
+    pub default_backend: Option<String>,
 
     #[serde(default = "default_manifest_url")]
     pub manifest_url: String,
@@ -13,8 +15,12 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            backends: vec![Default::default()],
+            backends: vec![BackendInfo {
+                name: "default".to_owned(),
+                info: Default::default(),
+            }],
             manifest_url: default_manifest_url(),
+            default_backend: None,
         }
     }
 }
@@ -26,11 +32,35 @@ pub fn default_manifest_url() -> String {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum BackendInfo {
+pub enum BackendTy {
     Filesystem { root: PathBuf },
     WebDav(WebDavInfo),
 }
-impl Default for BackendInfo {
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BackendInfo {
+    /// Name of the backend
+    pub name: String,
+    #[serde(flatten)]
+    pub info: BackendTy,
+}
+
+impl BackendInfo {
+    /// Pretty print for console output
+    pub fn pretty_print(&self) -> String {
+        match &self.info {
+            BackendTy::Filesystem { root } => format!("filesystem at '{root:?}'"),
+            BackendTy::WebDav(web_dav_info) => format!(
+                "webdav at '{url}/{root:?}' with username {username}",
+                root = web_dav_info.root,
+                username = web_dav_info.username,
+                url = web_dav_info.url
+            ),
+        }
+    }
+}
+
+impl Default for BackendTy {
     fn default() -> Self {
         Self::Filesystem {
             root: dirs::data_dir().unwrap().join("cinc").join("local-store"),
@@ -42,7 +72,7 @@ impl Default for BackendInfo {
 pub struct WebDavInfo {
     pub url: String,
     pub username: String,
-    pub psk: String,
+    pub psk: Option<String>,
     pub root: PathBuf,
 }
 
@@ -91,4 +121,5 @@ impl SteamId64 {
 #[serde(rename_all = "snake_case")]
 pub enum BackendType {
     Filesystem,
+    WebDav,
 }
