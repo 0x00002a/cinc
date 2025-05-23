@@ -249,8 +249,6 @@ impl<'f> SyncMgr<'f> {
                 debug!("not uploading {local_path:?} because it doesn't exist");
             }
         }
-        b.finish()?;
-
-        todo!()
+        Ok(b.into_inner()?)
     }
 }
