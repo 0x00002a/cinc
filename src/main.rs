@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter},
+    time::SystemTime,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -110,6 +111,7 @@ fn read_config() -> Result<Config> {
     }
 }
 fn run() -> anyhow::Result<()> {
+    let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
 
     match &args.op {
@@ -176,6 +178,11 @@ fn run() -> anyhow::Result<()> {
                 }
                 drop(info); // its info is no longer valid after the command runs bc it may create new files
 
+                let launch_time = SystemTime::now();
+                debug!(
+                    "we had an overhead of {}ms",
+                    launch_time.duration_since(start_time)?.as_millis()
+                );
                 let mut c = std::process::Command::new(&command[0])
                     .args(command.iter().skip(1))
                     .spawn()
