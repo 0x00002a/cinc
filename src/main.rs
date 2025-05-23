@@ -165,20 +165,24 @@ fn run() -> anyhow::Result<()> {
                         return Err(e);
                     }
                 };
-                let mut backends = cfg
+                let mut b = cfg
                     .backends
                     .iter()
-                    .map(|b| b.to_backend(name))
-                    .collect::<Result<Vec<_>, BackendError>>()?;
-                let b = &backends[0];
-                if let Some(sync_info) = info.are_local_files_newer(b)? {
+                    .enumerate()
+                    .find(|(i, b)| {
+                        (cfg.default_backend.is_none() && *i == 0)
+                            || (cfg.default_backend.as_ref() == Some(&b.name))
+                    })
+                    .map(|(_, b)| b.to_backend(name))
+                    .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
+                if let Some(sync_info) = info.are_local_files_newer(&b)? {
                     warn!(
                         "found local files newer than local, showing confirmation box to the user..."
                     );
 
                     match spawn_sync_confirm(sync_info)? {
                         SyncChoices::Continue => {
-                            info.download(b, true)?;
+                            info.download(&b, true)?;
                         }
                         SyncChoices::Upload => {}
                         SyncChoices::Exit => {
@@ -186,7 +190,7 @@ fn run() -> anyhow::Result<()> {
                         }
                     }
                 } else {
-                    info.download(b, false)?;
+                    info.download(&b, false)?;
                 }
                 drop(info); // its info is no longer valid after the command runs bc it may create new files
 
@@ -209,9 +213,7 @@ fn run() -> anyhow::Result<()> {
                             return Err(e);
                         }
                     };
-                    for b in &mut backends {
-                        info.upload(b)?;
-                    }
+                    info.upload(&mut b)?;
                 } else {
                     debug!("not uploading due to --debug-no-upload flag");
                 }
