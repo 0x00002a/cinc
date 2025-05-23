@@ -1,5 +1,6 @@
+use fs_err as fs;
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{File, OpenOptions},
     io::{BufReader, BufWriter},
     process::exit,
     time::SystemTime,
@@ -40,12 +41,12 @@ fn init_term_logging() {
 }
 fn init_file_logging() -> Result<()> {
     let dir = &log_dir();
-    if !fs::exists(dir)? {
+    if !std::fs::exists(dir)? {
         fs::create_dir_all(dir)?;
     }
     let log_file = OpenOptions::new()
-        .append(false)
         .create(true)
+        .write(true)
         .truncate(true)
         .open(dir.join("general.log"))?;
     let fmt_layer = tracing_subscriber::fmt::layer()
@@ -133,7 +134,7 @@ fn run() -> anyhow::Result<()> {
 
     match &args.op {
         cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {
-            init_file_logging()?;
+            init_file_logging().expect("failed to init logging");
             let cfg = read_config()?;
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");

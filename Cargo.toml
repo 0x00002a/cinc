@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.87.0"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = { version = "1.0.98", features = ["backtrace"] }
 bincode = { version = "2.0.1", features = ["serde"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.38", features = ["color", "derive"] }

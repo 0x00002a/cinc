@@ -33,7 +33,7 @@ impl<'s> eframe::App for CincUi<'s> {
         egui::CentralPanel::default().show(ctx, |ui| match self {
             CincUi::Error(err) => {
                 ui.label("error encountered");
-                ui.label(err.to_string());
+                ui.label(format!("{err:?}"));
                 if ui.button("close").clicked() {
                     ctx.send_viewport_cmd(ViewportCommand::Close);
                 }
