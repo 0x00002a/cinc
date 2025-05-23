@@ -110,7 +110,7 @@ fn read_config() -> Result<Config> {
     }
 }
 fn run() -> anyhow::Result<()> {
-    let args = CliArgs::parse();
+    let args = CliArgs::try_parse()?;
 
     match &args.op {
         cinc::args::Operation::Init {} => {
