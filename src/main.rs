@@ -43,8 +43,9 @@ fn init_file_logging() -> Result<()> {
         fs::create_dir_all(dir)?;
     }
     let log_file = OpenOptions::new()
-        .append(true)
+        .append(false)
         .create(true)
+        .truncate(true)
         .open(dir.join("general.log"))?;
     let fmt_layer = tracing_subscriber::fmt::layer()
         .pretty()
