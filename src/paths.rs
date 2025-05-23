@@ -14,8 +14,10 @@ pub fn cache_dir() -> PathBuf {
     dirs::cache_dir()
         .map(|d| d.join("cinc"))
         .unwrap_or_else(|| {
-            warn!("could not locate system cache directory, falling back to ~/.cinc/cache");
-            let home = home_dir().expect("could not locate home directory");
+            tracing::warn!(
+                "could not locate system cache directory, falling back to ~/.cinc/cache"
+            );
+            let home = std::env::home_dir().expect("could not locate home directory");
             home.join(".cinc").join("cache")
         })
 }
