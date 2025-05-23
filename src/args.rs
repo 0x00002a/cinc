@@ -20,7 +20,10 @@ pub struct CliArgs {
 
 #[derive(Subcommand, Clone)]
 pub enum Operation {
-    Init {},
+    /// For launching a game
+    ///
+    /// This will download the files from the specified (or default) backend before launching the game,
+    /// and upload them after. It may be used with steam as `cinc launch -- %command%`
     Launch(LaunchArgs),
     #[command(hide = true)]
     DebugSyncDialog {

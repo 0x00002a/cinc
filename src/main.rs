@@ -132,11 +132,6 @@ fn run() -> anyhow::Result<()> {
     let args = CliArgs::try_parse()?;
 
     match &args.op {
-        cinc::args::Operation::Init {} => {
-            init_term_logging();
-            get_game_manifests()?;
-            read_config()?;
-        }
         cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {
             init_file_logging()?;
             let cfg = read_config()?;
