@@ -5,14 +5,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
     backends::{BackendError, ModifiedMetadata, StorageBackend},
     config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
-    ui::{CincUi, SyncIssueInfo},
+    ui::{CincUi, SyncChoices, SyncIssueInfo},
 };
 use clap::Parser;
 use eframe::NativeOptions;
@@ -123,8 +123,17 @@ impl<'f> SyncInfo<'f> {
                     warn!(
                         "found local files newer than local, showing confirmation box to the user..."
                     );
-                    if !spawn_sync_confirm(SyncIssueInfo {})? {
-                        std::process::exit(0);
+                    match spawn_sync_confirm(SyncIssueInfo {
+                        local_time: newest_local,
+                        remote_time: cloud_time.last_write_timestamp,
+                        remote_name: "todo",
+                        remote_last_writer: &cloud_time.last_write_hostname,
+                    })? {
+                        SyncChoices::Continue => {
+                            todo!()
+                        }
+                        SyncChoices::Upload => todo!(),
+                        SyncChoices::Exit => todo!(),
                     }
                 }
             }
@@ -347,9 +356,18 @@ fn run() -> anyhow::Result<()> {
                 todo!()
             }
         }
-        cinc::args::Operation::DebugSyncDialog => {
-            let r = spawn_sync_confirm(SyncIssueInfo {})?;
-            println!("{r}");
+        cinc::args::Operation::DebugSyncDialog {
+            remote_name,
+            last_writer,
+        } => {
+            let now = Local::now().to_utc();
+            let r = spawn_sync_confirm(SyncIssueInfo {
+                remote_name,
+                local_time: now,
+                remote_time: now,
+                remote_last_writer: last_writer,
+            })?;
+            println!("{r:?}");
         }
     }
     Ok(())
@@ -363,7 +381,11 @@ fn spawn_popup(title: &str, state: CincUi) -> eframe::Result {
                 .with_always_on_top()
                 .with_close_button(true)
                 .with_minimize_button(false)
-                .with_inner_size((200.0, 100.0)),
+                .with_inner_size(if !matches!(state, CincUi::SyncIssue { .. }) {
+                    (200.0, 100.0)
+                } else {
+                    (500.0, 230.0)
+                }),
 
             persist_window: false,
             ..Default::default()
@@ -374,39 +396,45 @@ fn spawn_popup(title: &str, state: CincUi) -> eframe::Result {
 
 /// Spawn a dialog warning the user of sync issues and asking them whether to
 /// continue. Returns whether the user elected to continue
-fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<bool> {
-    let mut cont = false;
+fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
+    let mut choice = SyncChoices::Exit;
     spawn_popup(
         "Cloud conflict",
         CincUi::SyncIssue {
-            info: SyncIssueInfo {},
-            on_continue: Box::new(|| {
-                cont = true;
+            info,
+            on_continue: Box::new(|choice| {
+                *choice = SyncChoices::Continue;
             }),
+            on_upload: Box::new(|choice| {
+                *choice = SyncChoices::Upload;
+            }),
+            choice_store: &mut choice,
         },
     )
     .map_err(|e| anyhow!("{e}"))?;
-    Ok(cont)
+    Ok(choice)
 }
 
 fn main() {
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let msg = info
-            .payload()
-            .downcast_ref::<String>()
-            .map(|s| s.to_owned())
-            .or_else(|| {
-                info.payload()
-                    .downcast_ref::<&str>()
-                    .map(|s| (*s).to_owned())
-            });
-        if let Some(msg) = msg {
-            let _ = spawn_popup("Cinc panic", CincUi::Panic(msg));
-        }
+    if !std::env::args().contains("--no-panic-hook") {
+        let prev_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let msg = info
+                .payload()
+                .downcast_ref::<String>()
+                .map(|s| s.to_owned())
+                .or_else(|| {
+                    info.payload()
+                        .downcast_ref::<&str>()
+                        .map(|s| (*s).to_owned())
+                });
+            if let Some(msg) = msg {
+                let _ = spawn_popup("Cinc panic", CincUi::Panic(msg));
+            }
 
-        prev_hook(info);
-    }));
+            prev_hook(info);
+        }));
+    }
     if let Err(e) = run() {
         spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
     }

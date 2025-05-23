@@ -6,6 +6,14 @@ use crate::{config::BackendType, manifest::Store};
 
 #[derive(Parser)]
 pub struct CliArgs {
+    /// Debug flag, not displayed to the user
+    #[arg(
+        hide = true,
+        long = "no-panic-hook",
+        required = false,
+        default_value_t = false
+    )]
+    pub no_panic_hook: bool,
     #[command(subcommand)]
     pub op: Operation,
 }
@@ -15,7 +23,12 @@ pub enum Operation {
     Init {},
     Launch(LaunchArgs),
     #[command(hide = true)]
-    DebugSyncDialog,
+    DebugSyncDialog {
+        #[arg(default_value = "debug remote", long)]
+        remote_name: String,
+        #[arg(default_value = "debug writer", long)]
+        last_writer: String,
+    },
 }
 
 #[derive(Args, Clone)]
@@ -61,15 +74,6 @@ impl ValueEnum for PlatformOpt {
 }
 
 impl LaunchArgs {
-    /*pub fn uses_backends(&self) -> Vec<BackendInfo> {
-        let mut used = Vec::new();
-        if let Some(fs) = &self.fs_backend_args {
-            used.push(BackendInfo::Filesystem {
-                root: fs.root.to_owned(),
-            })
-        }
-        used
-    }*/
     pub fn resolve_platform(&self) -> Option<Store> {
         match self.platform {
             PlatformOpt::Steam => Some(Store::Steam),
