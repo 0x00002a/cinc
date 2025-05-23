@@ -1,12 +1,14 @@
 use std::{
     fs,
+    io::prelude::*,
     path::{Path, PathBuf},
 };
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
+use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use itertools::Itertools;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     backends::{ModifiedMetadata, StorageBackend},
@@ -15,6 +17,8 @@ use crate::{
     paths::{PathExt, extract_postfix, steam_dir},
     ui::{SyncChoices, SyncIssueInfo},
 };
+
+const ARCHIVE_NAME: &str = "archive.tar.zst";
 
 pub struct FileInfo<'f> {
     local_path: PathBuf,
@@ -165,35 +169,69 @@ impl<'f> SyncMgr<'f> {
         // check that we are not overwriting anything
         assert!(force_overwrite || self.are_local_files_newer(backend)?.is_none());
 
-        for FileInfo {
-            local_path,
-            remote_path,
-            ..
-        } in &self.files
-        {
-            assert!(!local_path.is_dir());
-            debug!("downloading {local_path:?} from cloud...");
-            if backend.exists(remote_path)? {
-                let data = backend.read_file(remote_path)?;
-                fs::write(local_path, &data)?;
-            }
+        let ap = Path::new(ARCHIVE_NAME);
+        if !backend.exists(ap)? {
+            debug!("...nothing to do");
+            return Ok(None);
         }
+
+        let archive = backend.read_file(ap)?;
+        let uncomp = self.decompress_files(&archive)?;
+        self.untar_files(&uncomp)?;
+
         Ok(None)
     }
     pub fn upload(&self, backend: &mut impl StorageBackend) -> Result<()> {
         info!("uploading files to cloud...");
-        // check that we are not overwriting anything local that is newer
-        let prev_write = backend.read_sync_time()?;
-        if let Some(cloud_time) = prev_write {
-            if let Some(newest_local) = self.get_latest_modified_time()? {
-                if newest_local < cloud_time.last_write_timestamp {
-                    bail!("older than local!");
-                }
-            }
-        }
+
         let latest_write = ModifiedMetadata::from_sys_info();
         // need to do this before any of the others
         backend.write_sync_time(&latest_write)?;
+
+        let archive = self.compress_files()?;
+
+        backend.write_file(Path::new(ARCHIVE_NAME), &archive)?;
+
+        Ok(())
+    }
+
+    fn untar_files(&self, from: &[u8]) -> Result<()> {
+        let mut archive = tar::Archive::new(from);
+        for ent in archive.entries()? {
+            let mut ent = ent?;
+            let remote_path = ent.path()?;
+            let Some(file) = self.files.iter().find(|f| f.remote_path == remote_path) else {
+                warn!("found in the archive that isn't in the metadata, ignoring");
+                // todo: this may cause data loss, conceivably, should we error instead?
+                continue;
+            };
+            debug!(
+                "unpacking {local_path:?} from archive...",
+                local_path = file.local_path
+            );
+            // it's "okay" that this is insecure because we trust the local path (it comes from the manifest)
+            ent.unpack(&file.local_path)?;
+        }
+        Ok(())
+    }
+
+    fn decompress_files(&self, from: &[u8]) -> Result<Vec<u8>> {
+        let mut decoder = ZlibDecoder::new(from);
+        let mut buf = Vec::new();
+        decoder.read_to_end(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn compress_files(&self) -> Result<Vec<u8>> {
+        let files = self.tar_files()?;
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&files)?;
+        let o = encoder.finish()?;
+        Ok(o)
+    }
+
+    fn tar_files(&self) -> Result<Vec<u8>> {
+        let mut b = tar::Builder::new(Vec::new());
 
         for FileInfo {
             local_path,
@@ -202,13 +240,17 @@ impl<'f> SyncMgr<'f> {
         } in &self.files
         {
             if fs::exists(local_path)? {
-                debug!("uploading {local_path:?} to the cloud...");
-                let data = fs::read(local_path)?;
-                backend.write_file(remote_path, &data)?;
+                debug!("adding {local_path:?} to the archive...");
+                let metadata = fs::metadata(local_path)?;
+                let mut header = tar::Header::new_gnu();
+                header.set_metadata(&metadata);
+                b.append_path_with_name(local_path, remote_path)?;
             } else {
                 debug!("not uploading {local_path:?} because it doesn't exist");
             }
         }
-        Ok(())
+        b.finish()?;
+
+        todo!()
     }
 }
