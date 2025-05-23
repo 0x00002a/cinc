@@ -45,7 +45,7 @@ pub enum BackendsArgs {
         name: String,
 
         /// Type of the backend
-        #[arg(long = "type")]
+        #[arg(long = "type", alias = "ty")]
         ty: BackendType,
 
         /// Root for the backend relative
@@ -143,7 +143,7 @@ pub struct FsBackendArgs {
 
 impl ValueEnum for BackendType {
     fn value_variants<'a>() -> &'a [Self] {
-        &[BackendType::Filesystem]
+        &[BackendType::Filesystem, BackendType::WebDav]
     }
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {

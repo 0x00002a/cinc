@@ -267,8 +267,18 @@ fn run() -> anyhow::Result<()> {
                     write_cfg(&cfg)?;
                 }
                 cinc::args::BackendsArgs::List => {
-                    for b in &cfg.backends {
-                        println!("- {}", b.pretty_print());
+                    for (i, b) in cfg.backends.iter().enumerate() {
+                        println!(
+                            "- {} {}",
+                            b.pretty_print(),
+                            if Some(&b.name) == cfg.default_backend.as_ref()
+                                || (cfg.default_backend.is_none() && i == 1)
+                            {
+                                "(default)"
+                            } else {
+                                ""
+                            }
+                        );
                     }
                 }
                 cinc::args::BackendsArgs::SetDefault { name } => {
@@ -328,6 +338,9 @@ fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
 }
 
 fn main() {
+    if std::env::args().contains("--help") {
+        CliArgs::parse(); // this will print the help to the console
+    }
     if !std::env::args().contains("--no-panic-hook") {
         let prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
