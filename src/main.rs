@@ -1,6 +1,4 @@
 use std::{
-    collections::HashMap,
-    env::home_dir,
     fs::{self, File, OpenOptions},
     io::{BufReader, BufWriter},
     path::{Path, PathBuf},
@@ -10,8 +8,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    backends::{self, BackendError, ModifiedMetadata, StorageBackend, filesystem::FilesystemStore},
-    config::{BackendInfo, Config, SteamId, SteamId64, default_manifest_url},
+    backends::{BackendError, ModifiedMetadata, StorageBackend},
+    config::{Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
     ui::CincUi,
@@ -20,7 +18,6 @@ use clap::Parser;
 use eframe::NativeOptions;
 use egui::ViewportBuilder;
 use itertools::Itertools;
-use serde::Deserialize;
 use tracing::{debug, error, info};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -99,7 +96,6 @@ struct FileInfo<'f> {
 
 struct SyncInfo<'f> {
     files: Vec<FileInfo<'f>>,
-    game_name: String,
 }
 
 impl<'f> SyncInfo<'f> {
@@ -263,12 +259,7 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
         }
     }
 
-    Ok(SyncInfo {
-        files,
-        game_name: steam_app_manifest
-            .name
-            .ok_or_else(|| anyhow!("failed to get app name"))?,
-    })
+    Ok(SyncInfo { files })
 }
 const CFG_FILE_NAME: &str = "general.toml";
 
@@ -356,6 +347,23 @@ fn run() -> anyhow::Result<()> {
     }
     Ok(())
 }
+fn spawn_popup(title: &str, state: CincUi) -> eframe::Result {
+    eframe::run_native(
+        title,
+        NativeOptions {
+            centered: true,
+            viewport: ViewportBuilder::default()
+                .with_always_on_top()
+                .with_close_button(true)
+                .with_minimize_button(false)
+                .with_inner_size((200.0, 100.0)),
+
+            persist_window: false,
+            ..Default::default()
+        },
+        Box::new(|_cc| Ok(Box::new(state))),
+    )
+}
 
 fn main() {
     let prev_hook = std::panic::take_hook();
@@ -370,41 +378,12 @@ fn main() {
                     .map(|s| (*s).to_owned())
             });
         if let Some(msg) = msg {
-            let _ = eframe::run_native(
-                "Cinc panic!",
-                NativeOptions {
-                    centered: true,
-                    viewport: ViewportBuilder::default()
-                        .with_always_on_top()
-                        .with_close_button(true)
-                        .with_minimize_button(false)
-                        .with_inner_size((200.0, 100.0)),
-
-                    persist_window: false,
-                    ..Default::default()
-                },
-                Box::new(|_cc| Ok(Box::new(CincUi::Panic(msg)))),
-            );
+            let _ = spawn_popup("Cinc panic", CincUi::Panic(msg));
         }
 
         prev_hook(info);
     }));
     if let Err(e) = run() {
-        eframe::run_native(
-            "Cinc error",
-            NativeOptions {
-                centered: true,
-                viewport: ViewportBuilder::default()
-                    .with_always_on_top()
-                    .with_close_button(true)
-                    .with_minimize_button(false)
-                    .with_inner_size((200.0, 100.0)),
-
-                persist_window: false,
-                ..Default::default()
-            },
-            Box::new(|_cc| Ok(Box::new(CincUi::Error(e)))),
-        )
-        .expect("failed to open egui");
+        spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
     }
 }

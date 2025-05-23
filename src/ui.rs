@@ -1,5 +1,4 @@
-use anyhow::Result;
-use egui::{Context, Ui, ViewportCommand, Window};
+use egui::ViewportCommand;
 
 pub enum CincUi {
     Error(anyhow::Error),

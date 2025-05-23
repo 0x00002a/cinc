@@ -1,12 +1,5 @@
-use std::{
-    env::home_dir,
-    ffi::OsStr,
-    os::unix::ffi::OsStrExt,
-    path::{Path, PathBuf},
-};
-
+use std::path::{Path, PathBuf};
 use steamlocate::SteamDir;
-use tracing::warn;
 
 /// Get the steam directory info
 ///

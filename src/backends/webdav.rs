@@ -1,7 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::config::WebDavInfo;
-use anyhow::Result;
 use reqwest::{
     Method, StatusCode,
     blocking::{Client, RequestBuilder},

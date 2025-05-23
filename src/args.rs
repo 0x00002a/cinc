@@ -2,10 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValue};
 
-use crate::{
-    config::{BackendInfo, BackendType},
-    manifest::Store,
-};
+use crate::{config::BackendType, manifest::Store};
 
 #[derive(Parser)]
 pub struct CliArgs {
