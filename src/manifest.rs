@@ -144,12 +144,12 @@ pub enum TemplateError {
     UnknownVariable(String),
 }
 
-pub struct TemplateInfo<'p> {
+pub struct TemplateInfo {
     pub win_prefix: PathBuf,
     pub win_user: String,
     pub base_dir: PathBuf,
-    pub steam_root: Option<&'p Path>,
-    pub store_user_id: Option<&'p str>,
+    pub steam_root: Option<PathBuf>,
+    pub store_user_id: Option<String>,
     pub home_dir: Option<PathBuf>,
     pub xdg_config: Option<PathBuf>,
     pub xdg_data: Option<PathBuf>,
@@ -159,6 +159,12 @@ impl TemplatePath {
     pub fn new(s: String) -> Self {
         Self(s)
     }
+    /// Get the raw path, note that is this almost certainly not a valid
+    /// filesystem path and using it without applying substitutions WILL cause issues
+    pub fn as_raw_path(&self) -> &Path {
+        Path::new(&self.0)
+    }
+
     pub fn apply_substs(&self, info: &TemplateInfo) -> Result<String, TemplateError> {
         let mut end = 0;
         let mut substs = Vec::new();
@@ -206,8 +212,8 @@ impl TemplatePath {
                 "base" => info.base_dir.clone(),
                 "root" => info
                     .steam_root
-                    .ok_or(TemplateError::VariableNotAvailable("steam root"))?
-                    .to_owned(),
+                    .to_owned()
+                    .ok_or(TemplateError::VariableNotAvailable("steam root"))?,
                 "storeUserId" => info
                     .store_user_id
                     .as_ref()
@@ -250,8 +256,8 @@ mod tests {
                 win_prefix: "".into(),
                 win_user: "".to_owned(),
                 base_dir: "".into(),
-                steam_root: Some(&PathBuf::from(root)),
-                store_user_id: Some(user_id),
+                steam_root: Some(PathBuf::from(root)),
+                store_user_id: Some(user_id.to_owned()),
                 home_dir: None,
                 xdg_config: None,
                 xdg_data: None,
