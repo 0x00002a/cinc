@@ -11,12 +11,13 @@ use chrono::{DateTime, Utc};
 use cinc::{
     args::{CliArgs, LaunchArgs},
     backends::{self, ModifiedMetadata, StorageBackend, filesystem::FilesystemStore},
-    config::{Config, SteamId, SteamId64, default_manifest_url},
+    config::{BackendInfo, Config, SteamId, SteamId64, default_manifest_url},
     manifest::{FileTag, GameManifest, GameManifests, PlatformInfo, Store, TemplateInfo},
     paths::{PathExt, cache_dir, extract_postfix, log_dir, steam_dir},
 };
 use clap::Parser;
 use itertools::Itertools;
+use serde::Deserialize;
 use tracing::{debug, error, info};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -266,6 +267,27 @@ fn calc_sync_info(manifest: &GameManifest, app_id: SteamId) -> Result<SyncInfo> 
             .ok_or_else(|| anyhow!("failed to get app name"))?,
     })
 }
+const CFG_FILE_NAME: &str = "general.toml";
+
+fn read_config() -> Result<Config> {
+    let cfg_dir = &dirs::config_dir()
+        .ok_or_else(|| anyhow!("could not find config dir"))?
+        .join("cinc");
+    if !std::fs::exists(cfg_dir)? {
+        fs::create_dir_all(cfg_dir)?;
+    }
+    let cfg_file = cfg_dir.join(CFG_FILE_NAME);
+    if !std::fs::exists(&cfg_file)? {
+        let cfg = Config::default();
+        let cfg_toml = toml::to_string_pretty(&cfg).context("while serialising default config")?;
+        fs::write(&cfg_file, &cfg_toml)?;
+        Ok(cfg)
+    } else {
+        let cfg_str = fs::read_to_string(&cfg_file).context("while reading config")?;
+        let cfg = toml::from_str(&cfg_str).context("while deserialising config")?;
+        Ok(cfg)
+    }
+}
 
 fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
@@ -274,17 +296,7 @@ fn main() -> anyhow::Result<()> {
         cinc::args::Operation::Init {} => {
             init_term_logging();
             get_game_manifests()?;
-            /*let cfg: Config = toml::from_str(&std::fs::read_to_string(config)?)?;
-            let backend = cfg.backend.to_backend();
-
-            let games = cfg
-                .games
-                .iter()
-                .map(|g| g.resolve())
-                .collect::<anyhow::Result<Vec<_>>>()?;
-            for game in &games {
-                println!("{game:#?}");
-            }*/
+            read_config()?;
         }
         cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {
             init_file_logging()?;

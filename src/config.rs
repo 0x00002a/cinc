@@ -8,11 +8,17 @@ use crate::paths::steam_dir;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub backend: BackendInfo,
-    #[serde(alias = "game")]
-    pub games: Vec<GameInfoConfig>,
 
     #[serde(default = "default_manifest_url")]
     pub manifest_url: String,
+}
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            backend: Default::default(),
+            manifest_url: default_manifest_url(),
+        }
+    }
 }
 
 pub fn default_manifest_url() -> String {
@@ -24,6 +30,22 @@ pub fn default_manifest_url() -> String {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BackendInfo {
     Filesystem { root: PathBuf },
+    WebDav(WebDavInfo),
+}
+impl Default for BackendInfo {
+    fn default() -> Self {
+        Self::Filesystem {
+            root: dirs::data_dir().unwrap().join("cinc").join("local-store"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WebDavInfo {
+    pub url: String,
+    pub username: String,
+    pub psk: String,
+    pub root: PathBuf,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

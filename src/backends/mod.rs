@@ -4,10 +4,12 @@ use chrono::Utc;
 use filesystem::FilesystemStore;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use webdav::WebDavStore;
 
-use crate::config::BackendInfo;
+use crate::config::{BackendInfo, WebDavInfo};
 
 pub mod filesystem;
+pub mod webdav;
 
 #[derive(Debug, Error)]
 pub enum BackendError {
@@ -22,6 +24,9 @@ pub enum BackendError {
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Reqwuest(#[from] reqwest::Error),
 }
 type Result<T, E = BackendError> = std::result::Result<T, E>;
 
@@ -71,9 +76,15 @@ pub trait StorageBackend {
 }
 
 impl BackendInfo {
-    pub fn to_backend(&self) -> Result<Box<dyn StorageBackend>> {
+    pub fn to_backend(&self, game_name: &str) -> Result<Box<dyn StorageBackend>> {
         Ok(match self {
-            BackendInfo::Filesystem { root } => Box::new(FilesystemStore::new(root.to_owned())?),
+            BackendInfo::Filesystem { root } => {
+                Box::new(FilesystemStore::new(root.join(game_name))?)
+            }
+            BackendInfo::WebDav(web_dav_info) => Box::new(WebDavStore::new(WebDavInfo {
+                root: web_dav_info.root.join(game_name),
+                ..web_dav_info.to_owned()
+            })),
         })
     }
 }
