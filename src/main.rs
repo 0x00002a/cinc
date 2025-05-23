@@ -263,7 +263,7 @@ fn main() {
                         .map(|s| (*s).to_owned())
                 });
             if let Some(msg) = msg {
-                let _ = spawn_popup("Cinc panic", CincUi::Panic(msg));
+                let _ = spawn_popup("Cinc panic", CincUi::Panic(msg, info.location()));
             }
 
             prev_hook(info);

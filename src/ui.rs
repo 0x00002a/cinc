@@ -19,7 +19,7 @@ pub enum SyncChoices {
 
 pub enum CincUi<'s> {
     Error(anyhow::Error),
-    Panic(String),
+    Panic(String, Option<&'s std::panic::Location<'s>>),
     SyncIssue {
         info: SyncIssueInfo,
         on_continue: Box<dyn FnMut(&mut SyncChoices)>,
@@ -38,9 +38,12 @@ impl<'s> eframe::App for CincUi<'s> {
                     ctx.send_viewport_cmd(ViewportCommand::Close);
                 }
             }
-            CincUi::Panic(msg) => {
+            CincUi::Panic(msg, loc) => {
                 ui.label("panic!");
                 ui.label(&*msg);
+                if let Some(loc) = loc {
+                    ui.label(format!("at {}:{}:{}", loc.file(), loc.line(), loc.column()));
+                }
                 if ui.button("close").clicked() {
                     ctx.send_viewport_cmd(ViewportCommand::Close);
                 }
