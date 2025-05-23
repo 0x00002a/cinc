@@ -166,13 +166,7 @@ fn run() -> anyhow::Result<()> {
                         SyncChoices::Continue => {
                             info.download(b, true)?;
                         }
-                        SyncChoices::Upload => {
-                            if !args.no_upload {
-                                info.upload(&mut backends[0])?;
-                            } else {
-                                debug!("not uploading due to --debug-no-upload flag");
-                            }
-                        }
+                        SyncChoices::Upload => {}
                         SyncChoices::Exit => {
                             return Ok(());
                         }

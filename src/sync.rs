@@ -259,6 +259,7 @@ impl<'f> SyncMgr<'f> {
             entries: self
                 .files
                 .iter()
+                .filter(|e| std::fs::exists(&e.local_path).unwrap())
                 .map(|e| FileMetaEntry {
                     template: e.template.to_owned(),
                     remote_path: e.remote_path.clone(),

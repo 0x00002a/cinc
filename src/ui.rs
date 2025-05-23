@@ -87,13 +87,13 @@ impl<'s> eframe::App for CincUi<'s> {
 
                     ui.label(
                         r"
-If you continue, your local changes will be overwritten with the remote changes.
-
-You may also chose to upload your local changes now, overwriting the remote changes.
+If you continue, your local changes will be overwrite the remote changes when you close the game.
+If you download the remote changes your local files will be overwritten with the remote changes, if
+you have made any progress since the time displayed above for the remote changes, THIS WILL ERASE IT!!
                 ",
                     );
                     ui.label(
-                        RichText::new("UPLOAD OR CONTINUE MAY RESULT IN DATA LOSS")
+                        RichText::new("CONTINUE OR DOWNLOAD MAY RESULT IN DATA LOSS")
                             .color(Color32::RED)
                             .strong()
                             .size(18.0),
@@ -101,11 +101,11 @@ You may also chose to upload your local changes now, overwriting the remote chan
                 });
 
                 ui.horizontal(|ui| {
-                    if ui.button("Upload").clicked() {
+                    if ui.button("Continue").clicked() {
                         on_upload(choice_store);
                         ctx.send_viewport_cmd(ViewportCommand::Close);
                     }
-                    if ui.button("Continue").clicked() {
+                    if ui.button("Download").clicked() {
                         on_continue(choice_store);
                         ctx.send_viewport_cmd(ViewportCommand::Close);
                     }
