@@ -13,16 +13,6 @@ pub fn log_dir() -> PathBuf {
     cache_dir().join("logs")
 }
 
-#[cfg(not(debug_assertions))]
-pub fn data_dir() -> PathBuf {
-    dirs::data_dir().map(|c| c.join("cinc")).unwrap_or_else(|| {
-        tracing::warn!("could not locate system data directory, falling back to ~/.cinc/data");
-
-        let home = std::env::home_dir().expect("could not locate home directory");
-        home.join(".cinc").join("data")
-    })
-}
-
 macro_rules! dir_override {
     ($name:ident : $fname:ident) => {
         #[cfg(not(debug_assertions))]
