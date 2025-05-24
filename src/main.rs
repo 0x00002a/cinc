@@ -338,7 +338,7 @@ fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
 }
 
 fn main() {
-    if std::env::args().contains("--help") {
+    if std::env::args().any(|s| matches!(s.as_str(), "--help" | "-h" | "help")) {
         CliArgs::parse(); // this will print the help to the console
     }
     if !std::env::args().contains("--no-panic-hook") {
