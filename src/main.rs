@@ -10,7 +10,6 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::Local;
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    backends::BackendError,
     config::{BackendInfo, BackendTy, Config, SteamId, WebDavInfo, default_manifest_url},
     manifest::{GameManifests, Store},
     paths::{cache_dir, log_dir},
@@ -28,17 +27,6 @@ fn grab_manifest(url: &str) -> Result<String> {
     Ok(reqwest::blocking::get(url)?.text()?)
 }
 
-fn init_term_logging() {
-    let fmt_layer = tracing_subscriber::fmt::layer().pretty();
-    tracing_subscriber::registry()
-        .with(
-            fmt_layer.with_filter(tracing_subscriber::filter::Targets::new().with_target(
-                "cinc",
-                tracing_subscriber::filter::LevelFilter::from_level(tracing::Level::DEBUG),
-            )),
-        )
-        .init();
-}
 fn init_file_logging() -> Result<()> {
     let dir = &log_dir();
     if !std::fs::exists(dir)? {
