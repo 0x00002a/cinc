@@ -49,6 +49,10 @@ Set the launch options field to:
 cinc launch -- %command%
 ```
 
+This might not work since cargo installs packages to a directory that isn't
+always in the path by default, in that case use the absolute path for cinc
+instead (you can get it by doing `which cinc` in your shell)
+
 ## Supported operating systems
 
 - Linux
