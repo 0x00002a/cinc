@@ -321,13 +321,13 @@ fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
 }
 
 fn main() {
-    // TODO: games under proton don't seem to work? WEBFISHING for example
     if std::env::args().contains("--help") {
         CliArgs::parse(); // this will print the help to the console
     }
     if !std::env::args().contains("--no-panic-hook") {
         let prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
+            tracing::error!("panic! {info:?}");
             let msg = info
                 .payload()
                 .downcast_ref::<String>()
@@ -345,6 +345,7 @@ fn main() {
         }));
     }
     if let Err(e) = run() {
+        tracing::error!("{e:?}");
         spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
     }
 }
