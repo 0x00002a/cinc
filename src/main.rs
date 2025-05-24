@@ -84,6 +84,7 @@ fn get_game_manifests() -> Result<GameManifests> {
         )?;
         Ok(manifest)
     } else {
+        info!("reading cached manifest...");
         bincode::serde::decode_from_std_read(
             &mut BufReader::new(File::open(path)?),
             bincode::config::standard(),
@@ -336,6 +337,7 @@ fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
 }
 
 fn main() {
+    // TODO: games under proton don't seem to work? WEBFISHING for example
     if std::env::args().contains("--help") {
         CliArgs::parse(); // this will print the help to the console
     }

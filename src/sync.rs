@@ -96,6 +96,7 @@ impl<'f> SyncMgr<'f> {
                     wine: true, // assume wine true and filter out when it's not later
                 })
             }) {
+                debug!("rejecting {filename:?} as predicates were not satisfied");
                 continue;
             }
             let fname = filename.apply_substs(&local_info)?;
@@ -107,6 +108,10 @@ impl<'f> SyncMgr<'f> {
                 template: filename.to_owned(),
             };
             if !info.local_path.is_dir() && !fs::exists(&info.local_path)? {
+                debug!(
+                    "excluding {fname:?} as it doesn't exist on the filesystem",
+                    fname = info.local_path
+                );
                 continue;
             }
 

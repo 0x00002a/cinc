@@ -193,7 +193,7 @@ impl TemplatePath {
                     .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
                 "winAppData" => info
                     .win_prefix
-                    .join("Users")
+                    .join("users") // linux capitalisation senstive filesystems require this to be lowercase and windows doesn't care
                     .join(&info.win_user)
                     .join("AppData")
                     .join("Roaming"),
