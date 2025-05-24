@@ -2,3 +2,4 @@
 manifest.*
 remote-*
 cinc-data
+.vscode/
