@@ -55,6 +55,10 @@ pub enum BackendsArgs {
         #[arg(long = "root", default_value = "/")]
         root: PathBuf,
 
+        /// Set this backend as the default after adding it
+        #[arg(long = "set-default", default_value = "false")]
+        set_default: bool,
+
         /// Url for the webdav backend, required when type is webdev
         #[arg(long = "webdav-url")]
         webdav_url: Option<String>,

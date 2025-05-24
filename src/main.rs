@@ -230,6 +230,7 @@ fn run() -> anyhow::Result<()> {
                     webdav_url,
                     webdav_username,
                     webdav_psk,
+                    set_default,
                 } => {
                     let backend_ty = match ty {
                         cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
@@ -247,6 +248,9 @@ fn run() -> anyhow::Result<()> {
                         info: backend_ty,
                     };
                     cfg.backends.push(new_backend);
+                    if *set_default {
+                        cfg.default_backend = Some(name.to_owned());
+                    }
                     write_cfg(&cfg)?;
                 }
                 cinc::args::BackendsArgs::List => {
