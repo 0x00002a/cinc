@@ -56,6 +56,7 @@ pub fn extract_postfix<'p>(base: &'p Path, child: &'p Path) -> &'p Path {
 }
 
 pub trait PathExt {
+    /// Join but without the overwriting that happens if other is an absolute path
     fn join_good(&self, other: impl Into<PathBuf>) -> PathBuf;
 }
 impl PathExt for Path {
