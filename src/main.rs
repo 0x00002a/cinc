@@ -12,7 +12,7 @@ use cinc::{
     args::{CliArgs, LaunchArgs},
     config::{BackendInfo, BackendTy, Config, SteamId, WebDavInfo, default_manifest_url},
     manifest::{GameManifests, Store},
-    paths::{cache_dir, log_dir},
+    paths::{cache_dir, config_dir, log_dir},
     sync::SyncMgr,
     ui::{CincUi, SyncChoices, SyncIssueInfo},
 };
@@ -84,9 +84,7 @@ fn get_game_manifests() -> Result<GameManifests> {
 const CFG_FILE_NAME: &str = "general.toml";
 
 fn read_config() -> Result<Config> {
-    let cfg_dir = &dirs::config_dir()
-        .ok_or_else(|| anyhow!("could not find config dir"))?
-        .join("cinc");
+    let cfg_dir = &config_dir();
     if !std::fs::exists(cfg_dir)? {
         fs::create_dir_all(cfg_dir)?;
     }
@@ -104,9 +102,7 @@ fn read_config() -> Result<Config> {
 }
 
 fn write_cfg(cfg: &Config) -> Result<()> {
-    let cfg_dir = &dirs::config_dir()
-        .ok_or_else(|| anyhow!("could not find config dir"))?
-        .join("cinc");
+    let cfg_dir = &config_dir();
     fs::create_dir_all(cfg_dir)?;
     let cfg_file = cfg_dir.join(CFG_FILE_NAME);
     assert!(

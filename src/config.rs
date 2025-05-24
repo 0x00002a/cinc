@@ -2,6 +2,8 @@ use std::{fmt::Display, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::paths::data_dir;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     #[serde(alias = "backend")]
@@ -63,7 +65,7 @@ impl BackendInfo {
 impl Default for BackendTy {
     fn default() -> Self {
         Self::Filesystem {
-            root: dirs::data_dir().unwrap().join("cinc").join("local-store"),
+            root: data_dir().join("local-store"),
         }
     }
 }

@@ -9,26 +9,45 @@ pub fn steam_dir() -> anyhow::Result<SteamDir> {
     Ok(steamlocate::SteamDir::locate()?)
 }
 
-#[cfg(not(debug_assertions))]
-pub fn cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .map(|d| d.join("cinc"))
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "could not locate system cache directory, falling back to ~/.cinc/cache"
-            );
-            let home = std::env::home_dir().expect("could not locate home directory");
-            home.join(".cinc").join("cache")
-        })
-}
-#[cfg(debug_assertions)]
-pub fn cache_dir() -> PathBuf {
-    "./cinc-data/cache".into()
-}
-
 pub fn log_dir() -> PathBuf {
     cache_dir().join("logs")
 }
+
+#[cfg(not(debug_assertions))]
+pub fn data_dir() -> PathBuf {
+    dirs::data_dir().map(|c| c.join("cinc")).unwrap_or_else(|| {
+        tracing::warn!("could not locate system data directory, falling back to ~/.cinc/data");
+
+        let home = std::env::home_dir().expect("could not locate home directory");
+        home.join(".cinc").join("data")
+    })
+}
+
+macro_rules! dir_override {
+    ($name:ident : $fname:ident) => {
+        #[cfg(not(debug_assertions))]
+        pub fn $fname() -> PathBuf {
+            dirs::$fname().map(|c| c.join("cinc")).unwrap_or_else(|| {
+                tracing::warn!(
+                    "could not locate system {} directory, falling back to ~/.cinc/{}",
+                    stringify!($name),
+                    stringify!(name)
+                );
+
+                let home = std::env::home_dir().expect("could not locate home directory");
+                home.join(".cinc").join(stringify!(name))
+            })
+        }
+
+        #[cfg(debug_assertions)]
+        pub fn $fname() -> PathBuf {
+            concat!("./cinc-data/", stringify!($name)).into()
+        }
+    };
+}
+dir_override!(data : data_dir);
+dir_override!(config : config_dir);
+dir_override!(cache : cache_dir);
 
 /// Extract the postfix of two paths
 ///
