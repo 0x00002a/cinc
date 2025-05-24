@@ -18,7 +18,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backends: vec![BackendInfo {
-                name: "default".to_owned(),
+                name: "local-store".to_owned(),
                 info: Default::default(),
             }],
             manifest_url: default_manifest_url(),
