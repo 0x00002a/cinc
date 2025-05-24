@@ -3,6 +3,12 @@ name = "cinc"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.87.0"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/0x00002a/cinc"
+homepage = "https://github.com/0x00002a/cinc"
+description = "Cloud sync replacement for games it"
+
 
 [dependencies]
 anyhow = { version = "1.0.98", features = ["backtrace"] }

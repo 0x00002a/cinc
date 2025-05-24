@@ -42,16 +42,23 @@ pub enum Operation {
 
 #[derive(Subcommand, Clone)]
 pub enum BackendsArgs {
+    /// Add a backend to the config
     Add {
         /// Name of the backend
         #[arg(long = "name")]
         name: String,
 
         /// Type of the backend
-        #[arg(long = "type", alias = "ty")]
+        #[arg(long = "ty", alias = "type")]
         ty: BackendType,
 
-        /// Root for the backend relative
+        /// Root for the backend relative to the base root of the backend
+        ///
+        /// This will depend on the backend
+        ///
+        /// - for WebDav it is relative to the url given,
+        ///
+        /// - for the filesystem it is relative to /
         #[arg(long = "root", default_value = "/")]
         root: PathBuf,
 
@@ -71,7 +78,9 @@ pub enum BackendsArgs {
         #[arg(long = "webdav-psk")]
         webdav_psk: Option<String>,
     },
+    /// List all configured backends
     List,
+    /// Set a backend as the default
     SetDefault {
         /// Name of the backend
         #[arg()]
