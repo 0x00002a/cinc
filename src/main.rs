@@ -51,6 +51,27 @@ fn init_file_logging() -> Result<()> {
     Ok(())
 }
 
+fn update_manifest() -> Result<GameManifests> {
+    let cache = &cache_dir();
+    if !std::fs::exists(cache)? {
+        info!("creating cache dir...");
+        std::fs::create_dir_all(cache)?;
+    }
+    let path = &cache.join("manifest.bin");
+
+    info!("grabbing manifest...");
+    let txt = grab_manifest(&default_manifest_url())?;
+    info!("parsing manifest...");
+    let manifest: GameManifests = serde_yaml::from_str(&txt).context("while parsing manifest")?;
+    info!("write manifest...");
+    bincode::serde::encode_into_std_write(
+        &manifest,
+        &mut BufWriter::new(File::create(path)?),
+        bincode::config::standard(),
+    )?;
+    Ok(manifest)
+}
+
 fn get_game_manifests() -> Result<GameManifests> {
     let cache = &cache_dir();
     if !std::fs::exists(cache)? {
@@ -59,18 +80,7 @@ fn get_game_manifests() -> Result<GameManifests> {
     }
     let path = &cache.join("manifest.bin");
     if !std::fs::exists(path)? {
-        info!("grabbing manifest...");
-        let txt = grab_manifest(&default_manifest_url())?;
-        info!("parsing manifest...");
-        let manifest: GameManifests =
-            serde_yaml::from_str(&txt).context("while parsing manifest")?;
-        info!("write manifest...");
-        bincode::serde::encode_into_std_write(
-            &manifest,
-            &mut BufWriter::new(File::create(path)?),
-            bincode::config::standard(),
-        )?;
-        Ok(manifest)
+        update_manifest()
     } else {
         info!("reading cached manifest...");
         bincode::serde::decode_from_std_read(
@@ -116,6 +126,9 @@ fn write_cfg(cfg: &Config) -> Result<()> {
 fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
+    if args.update {
+        update_manifest()?;
+    }
 
     match &args.op {
         cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {

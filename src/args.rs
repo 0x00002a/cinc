@@ -6,6 +6,12 @@ use crate::{config::BackendType, manifest::Store};
 
 #[derive(Parser)]
 pub struct CliArgs {
+    /// Update the manifest
+    ///
+    /// Note this is a rather slow operation with the default manifest
+    /// as it is several megabytes of yaml
+    #[arg(long, default_value = "false")]
+    pub update: bool,
     /// Debug flag, not displayed to the user
     #[arg(
         hide = true,
