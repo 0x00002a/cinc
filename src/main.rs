@@ -126,6 +126,12 @@ fn write_cfg(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
+macro_rules! print_success {
+    ($($arg:tt)*) => {
+        println!("{}", format!($($arg)*).green())
+    }
+}
+
 async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
@@ -286,6 +292,7 @@ async fn run() -> anyhow::Result<()> {
                     } else {
                         info!("not writing config due to dry-run flag");
                     }
+                    print_success!("successfully added backend '{name}'");
                 }
                 cinc::args::BackendsArgs::Remove { name } => {
                     if cfg.default_backend.as_deref() == Some(name) {
@@ -309,6 +316,7 @@ async fn run() -> anyhow::Result<()> {
                     } else {
                         info!("not writing config due to dry-run flag");
                     }
+                    print_success!("successfully removed backend '{name}'");
                 }
                 cinc::args::BackendsArgs::List => {
                     for (i, b) in cfg.backends.iter().enumerate() {
@@ -332,6 +340,7 @@ async fn run() -> anyhow::Result<()> {
                     }
                     cfg.default_backend = Some(name.to_owned());
                     write_cfg(&cfg)?;
+                    print_success!("successfully set backend '{name}' as the default backend");
                 }
             }
         }
