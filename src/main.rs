@@ -162,7 +162,13 @@ async fn run() -> anyhow::Result<()> {
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
             }
+            let manifest_start = SystemTime::now();
             let manifests = get_game_manifests().await?;
+            let manifest_end = SystemTime::now();
+            debug!(
+                "parsing the manifest took {}ms",
+                manifest_end.duration_since(manifest_start)?.as_millis()
+            );
             let Some(platform) = largs.resolve_platform() else {
                 bail!(
                     "failed to resolve platform we are running on, try specifying it explicitly with --platform"
