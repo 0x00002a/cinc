@@ -21,6 +21,13 @@ pub struct CliArgs {
     )]
     pub no_panic_hook: bool,
 
+    /// Don't write to the filesystem or any backends
+    ///
+    /// This obviousely has no effect for some commands that are purely
+    /// query, e.g. listing backends
+    #[arg(long, short = 'n', required = false, default_value_t = false)]
+    pub dry_run: bool,
+
     /// Specify a config file to use
     #[arg(long = "config")]
     pub config_path: Option<PathBuf>,
@@ -83,10 +90,6 @@ pub enum BackendsArgs {
         /// Username for the webdav backend, required when type is webdev
         #[arg(long = "webdav-username")]
         webdav_username: Option<String>,
-
-        /// Password for the webdav backend, required when type is webdev IF the endpoint requires password authentication
-        #[arg(long = "webdav-psk")]
-        webdav_psk: Option<String>,
     },
     /// List all configured backends
     List,

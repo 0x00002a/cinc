@@ -124,6 +124,13 @@ fn write_cfg(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
+fn user_input(prompt: &str) -> Result<String> {
+    print!("{prompt}");
+    let mut to = String::new();
+    std::io::stdin().read_line(&mut to)?;
+    Ok(to)
+}
+
 async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
@@ -243,19 +250,30 @@ async fn run() -> anyhow::Result<()> {
                     root,
                     webdav_url,
                     webdav_username,
-                    webdav_psk,
                     set_default,
                 } => {
                     let backend_ty = match ty {
                         cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
                             root: root.to_owned(),
                         },
-                        cinc::config::BackendType::WebDav => BackendTy::WebDav(WebDavInfo {
-                            url: webdav_url.to_owned().expect("missing webdav url"),
-                            username: webdav_username.to_owned().expect("missing webdav username"),
-                            psk: webdav_psk.to_owned(),
-                            root: root.to_owned(),
-                        }),
+                        cinc::config::BackendType::WebDav => {
+                            let webdav_psk = rpassword::prompt_password(
+                                "enter webdav password, leave blank for no password: ",
+                            )?;
+                            let webdav_psk = if webdav_psk.is_empty() {
+                                None
+                            } else {
+                                Some(webdav_psk)
+                            };
+                            BackendTy::WebDav(WebDavInfo {
+                                url: webdav_url.to_owned().expect("missing webdav url"),
+                                username: webdav_username
+                                    .to_owned()
+                                    .expect("missing webdav username"),
+                                psk: webdav_psk,
+                                root: root.to_owned(),
+                            })
+                        }
                     };
                     let new_backend = BackendInfo {
                         name: name.to_owned(),
@@ -265,7 +283,11 @@ async fn run() -> anyhow::Result<()> {
                     if *set_default {
                         cfg.default_backend = Some(name.to_owned());
                     }
-                    write_cfg(&cfg)?;
+                    if !args.dry_run {
+                        write_cfg(&cfg)?;
+                    } else {
+                        info!("not writing config due to dry-run flag");
+                    }
                 }
                 cinc::args::BackendsArgs::List => {
                     for (i, b) in cfg.backends.iter().enumerate() {
