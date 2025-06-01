@@ -151,98 +151,105 @@ async fn run() -> anyhow::Result<()> {
                 bail!("invalid config: at least one backend must be specified");
             }
             let manifests = get_game_manifests()?;
-            let platform = largs.resolve_platform();
-            if platform == Some(Store::Steam) {
-                let app_id = command
-                    .iter()
-                    .find(|e| e.starts_with("AppId="))
-                    .map(|s| {
-                        s.split_once("=")
-                            .expect("invalid AppId field, has the steam arg format changed?")
-                            .1
-                            .parse::<u32>()
-                            .map(SteamId::new)
-                            .expect("failed to parse app id")
-                    })
-                    .expect("couldn't find steam id");
-
-                let manifest_steam_id = largs.app_id.unwrap_or(app_id);
-                let (name, game) = manifests
-                    .iter()
-                    .find(|(_, m)| {
-                        m.steam
-                            .as_ref()
-                            .map(|i| i.id == manifest_steam_id)
-                            .unwrap_or(false)
-                    })
-                    .expect("couldn't find game in manifest");
-                debug!("found game manifest for {name}\n{game:#?}");
-
-                let mut b = cfg
-                    .backends
-                    .iter()
-                    .enumerate()
-                    .find(|(i, b)| {
-                        (cfg.default_backend.is_none() && *i == 0)
-                            || (cfg.default_backend.as_ref() == Some(&b.name))
-                    })
-                    .map(|(_, b)| b.to_backend(name))
-                    .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
-                if !args.dry_run {
-                    let info = match SyncMgr::from_steam_game(game, app_id) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            error!("failed to get information about game: {e}");
-                            return Err(e);
-                        }
-                    };
-                    if let Some(sync_info) = info.are_local_files_newer(&b).await? {
-                        warn!(
-                            "found local files newer than local, showing confirmation box to the user..."
-                        );
-
-                        match spawn_sync_confirm(sync_info)? {
-                            SyncChoices::Continue => {
-                                info.download(&b, true).await?;
-                            }
-                            SyncChoices::Upload => {}
-                            SyncChoices::Exit => {
-                                return Ok(());
-                            }
-                        }
-                    } else {
-                        info.download(&b, false).await?;
-                    }
-                    drop(info); // its info is no longer valid after the command runs bc it may create new files
-                } else {
-                    info!("not downloading files due to dry-run");
-                }
-
-                let launch_time = SystemTime::now();
-                debug!(
-                    "we had an overhead of {}ms",
-                    launch_time.duration_since(start_time)?.as_millis()
+            let Some(platform) = largs.resolve_platform() else {
+                bail!(
+                    "failed to resolve platform we are running on, try specifying it explicitly with --platform"
                 );
-                let mut c = std::process::Command::new(&command[0])
-                    .args(command.iter().skip(1))
-                    .spawn()
-                    .unwrap();
-                c.wait().unwrap();
+            };
+            match platform {
+                Store::Steam => {
+                    let app_id = command
+                        .iter()
+                        .find(|e| e.starts_with("AppId="))
+                        .map(|s| {
+                            s.split_once("=")
+                                .expect("invalid AppId field, has the steam arg format changed?")
+                                .1
+                                .parse::<u32>()
+                                .map(SteamId::new)
+                                .expect("failed to parse app id")
+                        })
+                        .expect("couldn't find steam id");
 
-                if args.dry_run || !largs.no_upload {
-                    let info = match SyncMgr::from_steam_game(game, app_id) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            error!("failed to get information about game: {e}");
-                            return Err(e);
+                    let manifest_steam_id = largs.app_id.unwrap_or(app_id);
+                    let (name, game) = manifests
+                        .iter()
+                        .find(|(_, m)| {
+                            m.steam
+                                .as_ref()
+                                .map(|i| i.id == manifest_steam_id)
+                                .unwrap_or(false)
+                        })
+                        .expect("couldn't find game in manifest");
+                    debug!("found game manifest for {name}\n{game:#?}");
+
+                    let mut b = cfg
+                        .backends
+                        .iter()
+                        .enumerate()
+                        .find(|(i, b)| {
+                            (cfg.default_backend.is_none() && *i == 0)
+                                || (cfg.default_backend.as_ref() == Some(&b.name))
+                        })
+                        .map(|(_, b)| b.to_backend(name))
+                        .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
+                    if !args.dry_run {
+                        let info = match SyncMgr::from_steam_game(game, app_id) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                error!("failed to get information about game: {e}");
+                                return Err(e);
+                            }
+                        };
+                        if let Some(sync_info) = info.are_local_files_newer(&b).await? {
+                            warn!(
+                                "found local files newer than local, showing confirmation box to the user..."
+                            );
+
+                            match spawn_sync_confirm(sync_info)? {
+                                SyncChoices::Continue => {
+                                    info.download(&b, true).await?;
+                                }
+                                SyncChoices::Upload => {}
+                                SyncChoices::Exit => {
+                                    return Ok(());
+                                }
+                            }
+                        } else {
+                            info.download(&b, false).await?;
                         }
-                    };
-                    info.upload(&mut b).await?;
-                } else {
-                    debug!("not uploading due to --debug-no-upload or dry-run flag");
+                        drop(info); // its info is no longer valid after the command runs bc it may create new files
+                    } else {
+                        info!("not downloading files due to dry-run");
+                    }
+
+                    let launch_time = SystemTime::now();
+                    debug!(
+                        "we had an overhead of {}ms",
+                        launch_time.duration_since(start_time)?.as_millis()
+                    );
+                    let mut c = std::process::Command::new(&command[0])
+                        .args(command.iter().skip(1))
+                        .spawn()
+                        .unwrap();
+                    c.wait().unwrap();
+
+                    if args.dry_run || !largs.no_upload {
+                        let info = match SyncMgr::from_steam_game(game, app_id) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                error!("failed to get information about game: {e}");
+                                return Err(e);
+                            }
+                        };
+                        info.upload(&mut b).await?;
+                    } else {
+                        debug!("not uploading due to --debug-no-upload or dry-run flag");
+                    }
                 }
-            } else {
-                todo!()
+                Store::Gog => todo!(),
+                Store::Epic => todo!(),
+                Store::Other => todo!(),
             }
         }
         cinc::args::Operation::DebugSyncDialog {
