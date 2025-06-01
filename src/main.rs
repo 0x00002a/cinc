@@ -112,7 +112,11 @@ fn read_config() -> Result<Config> {
     }
 }
 
-fn write_cfg(cfg: &Config) -> Result<()> {
+fn write_cfg(cfg: &Config, dry_run: bool) -> Result<()> {
+    if dry_run {
+        info!("not writing config due to dry-run flag");
+        return Ok(());
+    }
     let cfg_dir = &config_dir();
     debug!("writing config to {cfg_dir:?}");
     fs::create_dir_all(cfg_dir)?;
@@ -141,13 +145,13 @@ async fn run() -> anyhow::Result<()> {
     init_file_logging().expect("failed to init file logging");
 
     match &args.op {
-        cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {
+        cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {
             let cfg = read_config()?;
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
             }
             let manifests = get_game_manifests()?;
-            let platform = args.resolve_platform();
+            let platform = largs.resolve_platform();
             if platform == Some(Store::Steam) {
                 let app_id = command
                     .iter()
@@ -166,13 +170,6 @@ async fn run() -> anyhow::Result<()> {
                     .find(|(_, m)| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
                     .expect("couldn't find game in manifest");
                 debug!("found game manifest for {name}\n{game:#?}");
-                let info = match SyncMgr::from_steam_game(game, app_id) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("failed to get information about game: {e}");
-                        return Err(e);
-                    }
-                };
                 let mut b = cfg
                     .backends
                     .iter()
@@ -183,24 +180,35 @@ async fn run() -> anyhow::Result<()> {
                     })
                     .map(|(_, b)| b.to_backend(name))
                     .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
-                if let Some(sync_info) = info.are_local_files_newer(&b).await? {
-                    warn!(
-                        "found local files newer than local, showing confirmation box to the user..."
-                    );
+                if !args.dry_run {
+                    let info = match SyncMgr::from_steam_game(game, app_id) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("failed to get information about game: {e}");
+                            return Err(e);
+                        }
+                    };
+                    if let Some(sync_info) = info.are_local_files_newer(&b).await? {
+                        warn!(
+                            "found local files newer than local, showing confirmation box to the user..."
+                        );
 
-                    match spawn_sync_confirm(sync_info)? {
-                        SyncChoices::Continue => {
-                            info.download(&b, true).await?;
+                        match spawn_sync_confirm(sync_info)? {
+                            SyncChoices::Continue => {
+                                info.download(&b, true).await?;
+                            }
+                            SyncChoices::Upload => {}
+                            SyncChoices::Exit => {
+                                return Ok(());
+                            }
                         }
-                        SyncChoices::Upload => {}
-                        SyncChoices::Exit => {
-                            return Ok(());
-                        }
+                    } else {
+                        info.download(&b, false).await?;
                     }
+                    drop(info); // its info is no longer valid after the command runs bc it may create new files
                 } else {
-                    info.download(&b, false).await?;
+                    info!("not downloading files due to dry-run");
                 }
-                drop(info); // its info is no longer valid after the command runs bc it may create new files
 
                 let launch_time = SystemTime::now();
                 debug!(
@@ -213,7 +221,7 @@ async fn run() -> anyhow::Result<()> {
                     .unwrap();
                 c.wait().unwrap();
 
-                if !args.no_upload {
+                if args.dry_run || !largs.no_upload {
                     let info = match SyncMgr::from_steam_game(game, app_id) {
                         Ok(v) => v,
                         Err(e) => {
@@ -223,7 +231,7 @@ async fn run() -> anyhow::Result<()> {
                     };
                     info.upload(&mut b).await?;
                 } else {
-                    debug!("not uploading due to --debug-no-upload flag");
+                    debug!("not uploading due to --debug-no-upload or dry-run flag");
                 }
             } else {
                 todo!()
@@ -287,11 +295,7 @@ async fn run() -> anyhow::Result<()> {
                     if *set_default {
                         cfg.default_backend = Some(name.to_owned());
                     }
-                    if !args.dry_run {
-                        write_cfg(&cfg)?;
-                    } else {
-                        info!("not writing config due to dry-run flag");
-                    }
+                    write_cfg(&cfg, args.dry_run)?;
                     print_success!("successfully added backend '{name}'");
                 }
                 cinc::args::BackendsArgs::Remove { name } => {
@@ -311,11 +315,7 @@ async fn run() -> anyhow::Result<()> {
                         bail!("cannot remove backend '{name}' as it does not exist");
                     };
                     cfg.backends.remove(i);
-                    if !args.dry_run {
-                        write_cfg(&cfg)?;
-                    } else {
-                        info!("not writing config due to dry-run flag");
-                    }
+                    write_cfg(&cfg, args.dry_run)?;
                     print_success!("successfully removed backend '{name}'");
                 }
                 cinc::args::BackendsArgs::List => {
@@ -339,7 +339,7 @@ async fn run() -> anyhow::Result<()> {
                         exit(1);
                     }
                     cfg.default_backend = Some(name.to_owned());
-                    write_cfg(&cfg)?;
+                    write_cfg(&cfg, args.dry_run)?;
                     print_success!("successfully set backend '{name}' as the default backend");
                 }
             }
