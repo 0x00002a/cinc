@@ -154,6 +154,7 @@ async fn run() -> anyhow::Result<()> {
     }
     init_file_logging().expect("failed to init file logging");
     let secrets = SecretsApi::new().await?;
+    debug!("secrets available: {}", secrets.available());
 
     match &args.op {
         cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {

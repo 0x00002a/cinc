@@ -155,7 +155,12 @@ impl WebDavStore<'_> {
     pub async fn exists(&self, f: &Path) -> super::Result<bool> {
         debug!("check exists for {f:?}");
         let req = self.mk_req(Method::GET, f).await?.send().await?;
-        Ok(req.status() != StatusCode::NOT_FOUND)
+        if req.status() == StatusCode::NOT_FOUND {
+            Ok(false)
+        } else {
+            req.error_for_status()?;
+            Ok(true)
+        }
     }
 }
 
