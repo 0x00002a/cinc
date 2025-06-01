@@ -1,5 +1,5 @@
-use fs_err as fs;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 use tracing::debug;
 
 use super::Result;
@@ -10,7 +10,7 @@ pub struct FilesystemStore {
 impl FilesystemStore {
     pub fn new(root: PathBuf) -> Result<Self, std::io::Error> {
         if !std::fs::exists(&root)? {
-            fs::create_dir_all(&root)?;
+            std::fs::create_dir_all(&root)?;
         }
         Ok(Self { root })
     }
@@ -30,13 +30,13 @@ impl FilesystemStore {
         debug!("writing to {p:?}");
         assert!(!p.is_dir());
         if !std::fs::exists(p.parent().unwrap())? {
-            fs::create_dir_all(p.parent().unwrap())?;
+            fs::create_dir_all(p.parent().unwrap()).await?;
         }
-        Ok(fs::write(p, bytes)?)
+        Ok(fs::write(p, bytes).await?)
     }
 
     pub async fn read_file(&self, at: &Path) -> Result<Vec<u8>> {
-        Ok(fs::read(self.filename(at))?)
+        Ok(fs::read(self.filename(at)).await?)
     }
 
     pub async fn exists(&self, f: &Path) -> Result<bool> {
