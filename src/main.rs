@@ -354,6 +354,10 @@ async fn run() -> anyhow::Result<()> {
                         bail!("cannot remove backend '{name}' as it does not exist");
                     };
                     cfg.backends.remove(i);
+                    if !args.dry_run && secrets.available() {
+                        let used = cfg.used_keyring_ids().collect_vec();
+                        secrets.garbage_collect(&used).await?;
+                    }
                     write_cfg(&cfg, args.dry_run)?;
                     print_success!("successfully removed backend '{name}'");
                 }

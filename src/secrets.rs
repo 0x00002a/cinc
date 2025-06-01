@@ -4,7 +4,8 @@ use anyhow::Result;
 use secret_service::{Collection, EncryptionType, SecretService};
 use tracing::debug;
 
-const CINC_ATTR_NAME: &str = "id";
+const ATTR_ID: &str = "id";
+const ATTR_SERVICE: &str = "service";
 
 struct Inner<'s> {
     hdl: SecretService<'s>,
@@ -35,7 +36,8 @@ pub struct SecretsApi<'s> {
 }
 fn mk_cinc_attrs(id: &str) -> HashMap<&str, &str> {
     let mut attrs = HashMap::new();
-    attrs.insert(CINC_ATTR_NAME, id);
+    attrs.insert(ATTR_ID, id);
+    attrs.insert(ATTR_SERVICE, "cinc");
     attrs
 }
 
@@ -54,6 +56,21 @@ impl<'s> SecretsApi<'s> {
     /// Whether the secrets API is available on this system
     pub fn available(&self) -> bool {
         self.i.is_some()
+    }
+    /// Remove IDs that are unused
+    pub async fn garbage_collect(&self, used_ids: &[&str]) -> Result<()> {
+        debug!("gc ids, used: {used_ids:?}");
+        let hdl = self.i.as_ref().expect("no available secrets API");
+        let c = hdl.collection().await?;
+        let mut q = HashMap::new();
+        q.insert(ATTR_SERVICE, "cinc");
+        for item in c.search_items(q).await? {
+            let attrs = item.get_attributes().await?;
+            if !used_ids.contains(&&*attrs[ATTR_ID]) {
+                item.delete().await?;
+            }
+        }
+        Ok(())
     }
 
     pub async fn add_item(&self, label: &str, secret: &str) -> Result<()> {

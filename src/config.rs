@@ -27,6 +27,27 @@ impl Default for Config {
         }
     }
 }
+impl Config {
+    pub fn used_keyring_ids(&self) -> impl Iterator<Item = &str> {
+        self.backends
+            .iter()
+            .filter_map(|b| {
+                if let BackendTy::WebDav(i) = &b.info {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .filter_map(|i| i.psk.as_ref())
+            .filter_map(|p| {
+                if let Secret::SystemSecret(s) = p {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
+    }
+}
 
 pub fn default_manifest_url() -> String {
     "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml"
