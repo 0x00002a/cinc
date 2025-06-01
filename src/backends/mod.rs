@@ -4,6 +4,7 @@ use chrono::Utc;
 use filesystem::FilesystemStore;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use typesum::sumtype;
 use webdav::WebDavStore;
 
 use crate::config::{BackendInfo, BackendTy, WebDavInfo};
@@ -51,16 +52,51 @@ impl ModifiedMetadata {
         }
     }
 }
+#[sumtype]
+pub enum StorageBackendTy {
+    WebDav(WebDavStore),
+    Fs(FilesystemStore),
+}
+pub struct StorageBackend {
+    backend: StorageBackendTy,
+}
 
-pub trait StorageBackend {
-    fn write_file(&mut self, at: &Path, bytes: &[u8]) -> Result<()>;
-    fn read_file(&self, at: &Path) -> Result<Vec<u8>>;
-    fn exists(&self, f: &Path) -> Result<bool>;
+macro_rules! forward {
+    (fn $name:ident($($argname:ident : $argty:ty),*) -> $retr:ty) => {
+        pub fn $name (&self, $($argname : $argty),*) -> Result<$retr> {
+            match &self.backend {
+                StorageBackendTy::WebDav(b) => b.$name($($argname),*),
+                StorageBackendTy::Fs(b) => b.$name($($argname),*),
+            }
+        }
+    };
 
-    fn read_file_str(&self, at: &Path) -> Result<String> {
+    (fn mut $name:ident($($argname:ident : $argty:ty),*) -> $retr:ty) => {
+        pub fn $name (&mut self, $($argname : $argty),*) -> Result<$retr> {
+            match &mut self.backend {
+                StorageBackendTy::WebDav(b) => b.$name($($argname),*),
+                StorageBackendTy::Fs(b) => b.$name($($argname),*),
+            }
+        }
+    }
+}
+
+impl StorageBackend {
+    pub fn new(backend: impl Into<StorageBackendTy>) -> Self {
+        Self {
+            backend: backend.into(),
+        }
+    }
+    forward!(fn mut write_file(at: &Path, bytes: &[u8]) -> ());
+
+    forward!(fn read_file(at: &Path) -> Vec<u8>);
+
+    forward!(fn exists(at: &Path) -> bool);
+
+    pub fn read_file_str(&self, at: &Path) -> Result<String> {
         Ok(String::from_utf8(self.read_file(at)?)?)
     }
-    fn read_sync_time(&self) -> Result<Option<ModifiedMetadata>> {
+    pub fn read_sync_time(&self) -> Result<Option<ModifiedMetadata>> {
         let sync_time_file = Path::new(SYNC_TIME_FILE);
         if !self.exists(sync_time_file)? {
             return Ok(None);
@@ -69,30 +105,19 @@ pub trait StorageBackend {
         Ok(Some(serde_json::from_slice(&f)?))
     }
 
-    fn write_sync_time(&mut self, metadata: &ModifiedMetadata) -> Result<()> {
+    pub fn write_sync_time(&mut self, metadata: &ModifiedMetadata) -> Result<()> {
         let data = serde_json::to_vec(metadata)?;
         self.write_file(Path::new(SYNC_TIME_FILE), &data)
     }
 }
-impl StorageBackend for Box<dyn StorageBackend> {
-    fn write_file(&mut self, at: &Path, bytes: &[u8]) -> Result<()> {
-        self.as_mut().write_file(at, bytes)
-    }
-
-    fn read_file(&self, at: &Path) -> Result<Vec<u8>> {
-        self.as_ref().read_file(at)
-    }
-
-    fn exists(&self, f: &Path) -> Result<bool> {
-        self.as_ref().exists(f)
-    }
-}
 
 impl BackendInfo {
-    pub fn to_backend(&self, game_name: &str) -> Result<Box<dyn StorageBackend>> {
+    pub fn to_backend(&self, game_name: &str) -> Result<StorageBackend> {
         Ok(match &self.info {
-            BackendTy::Filesystem { root } => Box::new(FilesystemStore::new(root.join(game_name))?),
-            BackendTy::WebDav(web_dav_info) => Box::new(WebDavStore::new(WebDavInfo {
+            BackendTy::Filesystem { root } => {
+                StorageBackend::new(FilesystemStore::new(root.join(game_name))?)
+            }
+            BackendTy::WebDav(web_dav_info) => StorageBackend::new(WebDavStore::new(WebDavInfo {
                 root: web_dav_info.root.join(game_name),
                 ..web_dav_info.to_owned()
             })),

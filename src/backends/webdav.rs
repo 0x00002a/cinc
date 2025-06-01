@@ -9,8 +9,6 @@ use reqwest::{
 };
 use tracing::debug;
 
-use super::StorageBackend;
-
 pub struct WebDavStore {
     client: Client,
     cfg: WebDavInfo,
@@ -92,8 +90,8 @@ impl WebDavStore {
     }
 }
 
-impl StorageBackend for WebDavStore {
-    fn write_file(&mut self, at: &Path, bytes: &[u8]) -> super::Result<()> {
+impl WebDavStore {
+    pub fn write_file(&mut self, at: &Path, bytes: &[u8]) -> super::Result<()> {
         debug!("writing to {at:?}");
         if !self.exists(at.parent().expect("no parent path for file"))? {
             debug!("creating parent directories for {at:?}");
@@ -108,14 +106,14 @@ impl StorageBackend for WebDavStore {
         Ok(())
     }
 
-    fn read_file(&self, at: &Path) -> super::Result<Vec<u8>> {
+    pub fn read_file(&self, at: &Path) -> super::Result<Vec<u8>> {
         debug!("read {at:?}");
         let data = self.mk_req(Method::GET, at).send()?.error_for_status()?;
         let d = data.bytes()?;
         Ok(d.to_vec())
     }
 
-    fn exists(&self, f: &Path) -> super::Result<bool> {
+    pub fn exists(&self, f: &Path) -> super::Result<bool> {
         debug!("check exists for {f:?}");
         let req = self.mk_req(Method::GET, f).send()?;
         Ok(req.status() != StatusCode::NOT_FOUND)

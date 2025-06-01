@@ -20,6 +20,10 @@ pub struct CliArgs {
         default_value_t = false
     )]
     pub no_panic_hook: bool,
+
+    /// Specify a config file to use
+    #[arg(long = "config")]
+    pub config_path: Option<PathBuf>,
     #[command(subcommand)]
     pub op: Operation,
 }
