@@ -1,5 +1,12 @@
 use colored::Colorize;
+use crossterm::{
+    cursor::MoveToColumn,
+    event::KeyModifiers,
+    execute,
+    terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
+};
 use fs_err as fs;
+use std::io::{self, Write};
 use std::{
     fs::{File, OpenOptions},
     io::{BufReader, BufWriter},
@@ -130,6 +137,44 @@ fn write_cfg(cfg: &Config, dry_run: bool) -> Result<()> {
     let cfg = toml::to_string_pretty(cfg)?;
     std::fs::write(&cfg_file, &cfg)?;
     Ok(())
+}
+
+fn user_psk_input(prompt: &str) -> Result<String> {
+    eprint!("{prompt}");
+    enable_raw_mode()?;
+    fn inner(prompt: &str) -> Result<String> {
+        let mut buf = String::new();
+        loop {
+            match crossterm::event::read()? {
+                crossterm::event::Event::Key(key_event) => match key_event.code {
+                    crossterm::event::KeyCode::Backspace => {
+                        buf.pop();
+                    }
+                    crossterm::event::KeyCode::Enter => {
+                        return Ok(buf);
+                    }
+                    crossterm::event::KeyCode::Char(c) => {
+                        if c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                            std::process::exit(0);
+                        }
+                        buf.push(c);
+                    }
+                    _ => {}
+                },
+                crossterm::event::Event::Paste(p) => buf += &p,
+                _ => {}
+            }
+            let mut stdout = io::stdout();
+            execute!(stdout, MoveToColumn(0), Clear(ClearType::CurrentLine))?;
+            write!(stdout, "{prompt}")?;
+            write!(stdout, "{}", "•".repeat(buf.len()))?;
+            stdout.flush()?;
+        }
+    }
+    let to = inner(prompt);
+    disable_raw_mode()?;
+
+    to
 }
 
 fn user_input_yesno(prompt: &str, default: bool) -> Result<bool> {
@@ -283,6 +328,10 @@ async fn run() -> anyhow::Result<()> {
             })?;
             println!("{r:?}");
         }
+        cinc::args::Operation::DebugPskInput => {
+            let psk = user_psk_input("example: ")?;
+            println!("\n{psk}");
+        }
         cinc::args::Operation::BackendsConfig(backends_args) => {
             let mut cfg = read_config()?;
             match backends_args {
@@ -302,7 +351,7 @@ async fn run() -> anyhow::Result<()> {
                             root: root.to_owned(),
                         },
                         cinc::config::BackendType::WebDav => {
-                            let webdav_psk = rpassword::prompt_password(
+                            let webdav_psk = user_psk_input(
                                 "enter webdav password, leave blank for no password: ",
                             )?;
                             let webdav_psk = if webdav_psk.is_empty() {

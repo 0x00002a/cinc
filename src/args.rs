@@ -52,6 +52,10 @@ pub enum Operation {
         #[arg(default_value = "debug writer", long)]
         last_writer: String,
     },
+
+    /// Show a password input and echo it, for debugging
+    #[command(hide = true)]
+    DebugPskInput,
     /// Configure backends
     ///
     /// all others are just mirrors that

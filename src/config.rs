@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn example_config_can_parse() {
+    fn example_v0_1_config_can_parse() {
         let example_cfg = r#"
 default_backend = "cloud"
 
@@ -244,7 +244,7 @@ name = "cloud"
 type = "web_dav"
 url = "https://webdav.example.com/files/"
 username = "example@example.com"
-psk = { ty = "plain", value = "bingle" }
+psk = "bingle" # should parse as plain
 root = "/cinc"
 
         "#;
