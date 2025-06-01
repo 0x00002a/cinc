@@ -91,6 +91,11 @@ pub enum BackendsArgs {
         #[arg(long = "webdav-username")]
         webdav_username: Option<String>,
     },
+    Remove {
+        /// Name of the backend to remove
+        #[arg()]
+        name: String,
+    },
     /// List all configured backends
     List,
     /// Set a backend as the default

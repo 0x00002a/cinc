@@ -248,11 +248,7 @@ async fn run() -> anyhow::Result<()> {
                     set_default,
                 } => {
                     if cfg.backends.iter().any(|b| &b.name == name) {
-                        eprintln!(
-                            "{}",
-                            format!("a backend with the name '{name}' already exists!").red()
-                        );
-                        bail!("tried to add a backend with a conflicting name");
+                        bail!("a backend with the name '{name}' already exists!");
                     }
                     let backend_ty = match ty {
                         cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
@@ -285,6 +281,29 @@ async fn run() -> anyhow::Result<()> {
                     if *set_default {
                         cfg.default_backend = Some(name.to_owned());
                     }
+                    if !args.dry_run {
+                        write_cfg(&cfg)?;
+                    } else {
+                        info!("not writing config due to dry-run flag");
+                    }
+                }
+                cinc::args::BackendsArgs::Remove { name } => {
+                    if cfg.default_backend.as_deref() == Some(name) {
+                        bail!(
+                            "cannot remove backend '{name}' as it is currently the default backend"
+                        );
+                    }
+
+                    let Some(i) = cfg
+                        .backends
+                        .iter()
+                        .enumerate()
+                        .find(|(_, b)| &b.name == name)
+                        .map(|(i, _)| i)
+                    else {
+                        bail!("cannot remove backend '{name}' as it does not exist");
+                    };
+                    cfg.backends.remove(i);
                     if !args.dry_run {
                         write_cfg(&cfg)?;
                     } else {
@@ -394,6 +413,8 @@ async fn main() {
         tracing::error!("{e:?}");
         if is_without_term {
             spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
+        } else {
+            eprintln!("{}", e.to_string().red());
         }
         std::process::exit(1);
     }
