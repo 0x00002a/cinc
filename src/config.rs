@@ -187,6 +187,8 @@ pub enum BackendType {
 mod tests {
     use crate::config::Secret;
 
+    use super::Config;
+
     #[test]
     fn secret_is_stripped_of_keyring_prefix() {
         let p = "keyring:hello";
@@ -194,5 +196,29 @@ mod tests {
             p.parse::<Secret>().unwrap(),
             Secret::SystemSecret("hello".to_owned())
         );
+    }
+
+    #[test]
+    fn example_config_can_parse() {
+        let example_cfg = r#"
+default_backend = "cloud"
+
+[[backends]]
+name = "local-store"
+type = "filesystem"
+root = "./cinc-data/data/local-store"
+
+[[backends]]
+name = "cloud"
+type = "web_dav"
+url = "https://webdav.example.com/files/"
+username = "example@example.com"
+psk = "bingle"
+root = "/cinc"
+
+        "#;
+        let r: Config = toml::from_str(example_cfg).unwrap();
+        assert_eq!(r.default_backend, Some("cloud".to_owned()));
+        assert_eq!(r.backends.len(), 2);
     }
 }
