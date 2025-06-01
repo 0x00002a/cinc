@@ -153,6 +153,21 @@ impl SteamId {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum SteamIdParseError {
+    #[error("input was not a number")]
+    NonNumeric,
+}
+
+impl FromStr for SteamId {
+    type Err = SteamIdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let id: u32 = s.parse().map_err(|_| SteamIdParseError::NonNumeric)?;
+        Ok(Self::new(id))
+    }
+}
+
 impl Display for SteamId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.0))

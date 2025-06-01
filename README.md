@@ -53,6 +53,24 @@ This might not work since cargo installs packages to a directory that isn't
 always in the path by default, in that case use the absolute path for cinc
 instead (you can get it by doing `which cinc` in your shell)
 
+#### Launching non-steam games via steam
+
+Launching non-steam games through steam has an added complication due to the
+app id that steam assigns it not matching the actual steam app id for the game.
+This means that `cinc` will not be able to automatically work out which game it
+is launching. This is solved by passing the `--steam-app-id` argument with the
+real steam app id (which can be found on [steamdb] or by examining the numeric
+part of the store page url, e.g. for
+<https://store.steampowered.com/app/1903340/Clair_Obscur_Expedition_33/> the
+steam app id is `1903340`)
+
+e.g. if you have bought clair obscur through another store front but want to run
+it as a non-steam game through steam you would use the following command:
+
+```bash
+cinc launch --steam-app-id=1903340 -- %command%
+```
+
 ## Supported operating systems
 
 - Linux
@@ -73,3 +91,5 @@ Note that the manifest is cached so if you do this you will need to update it wi
 ```bash
 cinc --update
 ```
+
+[steamdb]: https://steamdb.info/

@@ -165,11 +165,19 @@ async fn run() -> anyhow::Result<()> {
                             .expect("failed to parse app id")
                     })
                     .expect("couldn't find steam id");
+
+                let manifest_steam_id = largs.app_id.unwrap_or(app_id);
                 let (name, game) = manifests
                     .iter()
-                    .find(|(_, m)| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
+                    .find(|(_, m)| {
+                        m.steam
+                            .as_ref()
+                            .map(|i| i.id == manifest_steam_id)
+                            .unwrap_or(false)
+                    })
                     .expect("couldn't find game in manifest");
                 debug!("found game manifest for {name}\n{game:#?}");
+
                 let mut b = cfg
                     .backends
                     .iter()

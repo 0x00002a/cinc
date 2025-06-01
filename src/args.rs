@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValue};
 
-use crate::{config::BackendType, manifest::Store};
+use crate::{
+    config::{BackendType, SteamId},
+    manifest::Store,
+};
 
 #[derive(Parser)]
 pub struct CliArgs {
@@ -122,6 +125,13 @@ pub struct LaunchArgs {
     /// Don't upload after closing, this is a debug flag and is hidden from the user
     #[arg(long = "debug-no-upload", hide = true, default_value = "false")]
     pub no_upload: bool,
+
+    /// Specify the steam app id used to find the game in the manifest directly
+    ///
+    /// This is useful in case the actual app id on steam differs from the app id steam tells cinc,
+    /// e.g. when you are launching a non-steam game through steam
+    #[arg(long = "steam-app-id")]
+    pub app_id: Option<SteamId>,
 
     #[arg(help = "Command to run the game, e.g. for steam pass as %command%")]
     pub command: Vec<String>,
