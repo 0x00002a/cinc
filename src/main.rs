@@ -6,12 +6,15 @@ use crossterm::{
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
 use fs_err as fs;
-use std::io::{self, Write};
 use std::{
     fs::{File, OpenOptions},
     io::{BufReader, BufWriter},
     process::exit,
     time::SystemTime,
+};
+use std::{
+    io::{self, Write},
+    path::{Path, PathBuf},
 };
 use uuid::Uuid;
 
@@ -103,39 +106,35 @@ async fn get_game_manifests() -> Result<GameManifests> {
 
 const CFG_FILE_NAME: &str = "general.toml";
 
-fn read_config() -> Result<Config> {
+fn get_cfg_path() -> Result<PathBuf> {
     let cfg_dir = &config_dir();
     if !std::fs::exists(cfg_dir)? {
         fs::create_dir_all(cfg_dir)?;
     }
-    let cfg_file = cfg_dir.join(CFG_FILE_NAME);
-    if !std::fs::exists(&cfg_file)? {
+    Ok(cfg_dir.join(CFG_FILE_NAME))
+}
+
+fn read_config(cfg_file: &Path) -> Result<Config> {
+    if !std::fs::exists(cfg_file)? {
         let cfg = Config::default();
         let cfg_toml = toml::to_string_pretty(&cfg).context("while serialising default config")?;
-        fs::write(&cfg_file, &cfg_toml)?;
+        fs::write(cfg_file, &cfg_toml)?;
         Ok(cfg)
     } else {
-        let cfg_str = fs::read_to_string(&cfg_file).context("while reading config")?;
+        let cfg_str = fs::read_to_string(cfg_file).context("while reading config")?;
         let cfg = toml::from_str(&cfg_str).context("while deserialising config")?;
         Ok(cfg)
     }
 }
 
-fn write_cfg(cfg: &Config, dry_run: bool) -> Result<()> {
+fn write_cfg(cfg: &Config, cfg_file: &Path, dry_run: bool) -> Result<()> {
     if dry_run {
         info!("not writing config due to dry-run flag");
         return Ok(());
     }
-    let cfg_dir = &config_dir();
-    debug!("writing config to {cfg_dir:?}");
-    fs::create_dir_all(cfg_dir)?;
-    let cfg_file = cfg_dir.join(CFG_FILE_NAME);
-    assert!(
-        std::fs::exists(&cfg_file)?,
-        "tried to write cfg but it doesn't exist"
-    );
+    debug!("writing config to {cfg_file:?}");
     let cfg = toml::to_string_pretty(cfg)?;
-    std::fs::write(&cfg_file, &cfg)?;
+    std::fs::write(cfg_file, &cfg)?;
     Ok(())
 }
 
@@ -200,10 +199,11 @@ async fn run() -> anyhow::Result<()> {
     init_file_logging().expect("failed to init file logging");
     let secrets = SecretsApi::new().await?;
     debug!("secrets available: {}", secrets.available());
+    let cfg_file = args.config_path.map(Ok).unwrap_or_else(get_cfg_path)?;
 
     match &args.op {
         cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {
-            let cfg = read_config()?;
+            let cfg = read_config(&cfg_file)?;
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
             }
@@ -333,7 +333,7 @@ async fn run() -> anyhow::Result<()> {
             println!("\n{psk}");
         }
         cinc::args::Operation::BackendsConfig(backends_args) => {
-            let mut cfg = read_config()?;
+            let mut cfg = read_config(&cfg_file)?;
             match backends_args {
                 cinc::args::BackendsArgs::Add {
                     name,
@@ -390,7 +390,7 @@ async fn run() -> anyhow::Result<()> {
                     if *set_default {
                         cfg.default_backend = Some(name.to_owned());
                     }
-                    write_cfg(&cfg, args.dry_run)?;
+                    write_cfg(&cfg, &cfg_file, args.dry_run)?;
                     print_success!("successfully added backend '{name}'");
                 }
                 cinc::args::BackendsArgs::Remove { name } => {
@@ -414,7 +414,7 @@ async fn run() -> anyhow::Result<()> {
                         let used = cfg.used_keyring_ids().collect_vec();
                         secrets.garbage_collect(&used).await?;
                     }
-                    write_cfg(&cfg, args.dry_run)?;
+                    write_cfg(&cfg, &cfg_file, args.dry_run)?;
                     print_success!("successfully removed backend '{name}'");
                 }
                 cinc::args::BackendsArgs::List => {
@@ -438,7 +438,7 @@ async fn run() -> anyhow::Result<()> {
                         exit(1);
                     }
                     cfg.default_backend = Some(name.to_owned());
-                    write_cfg(&cfg, args.dry_run)?;
+                    write_cfg(&cfg, &cfg_file, args.dry_run)?;
                     print_success!("successfully set backend '{name}' as the default backend");
                 }
             }
