@@ -15,6 +15,7 @@ anyhow = { version = "1.0.98", features = ["backtrace"] }
 bincode = { version = "2.0.1", features = ["serde"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.38", features = ["color", "derive"] }
+colored = "3.0.0"
 dirs = "6.0.0"
 eframe = { version = "0.31.1", default-features = false, features = [
     "wayland",

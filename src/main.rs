@@ -1,3 +1,4 @@
+use colored::Colorize;
 use fs_err as fs;
 use std::{
     fs::{File, OpenOptions},
@@ -246,6 +247,13 @@ async fn run() -> anyhow::Result<()> {
                     webdav_username,
                     set_default,
                 } => {
+                    if cfg.backends.iter().any(|b| &b.name == name) {
+                        eprintln!(
+                            "{}",
+                            format!("a backend with the name '{name}' already exists!").red()
+                        );
+                        bail!("tried to add a backend with a conflicting name");
+                    }
                     let backend_ty = match ty {
                         cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
                             root: root.to_owned(),
@@ -387,5 +395,6 @@ async fn main() {
         if is_without_term {
             spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
         }
+        std::process::exit(1);
     }
 }
