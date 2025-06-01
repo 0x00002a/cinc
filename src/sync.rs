@@ -157,7 +157,7 @@ impl<'f> SyncMgr<'f> {
     }
     pub async fn are_local_files_newer(
         &self,
-        backend: &StorageBackend,
+        backend: &StorageBackend<'_>,
     ) -> Result<Option<SyncIssueInfo>> {
         if let Some(cloud_time) = backend.read_sync_time().await? {
             if let Some(newest_local) = self.get_latest_modified_time()? {
@@ -176,7 +176,7 @@ impl<'f> SyncMgr<'f> {
 
     pub async fn download(
         &self,
-        backend: &StorageBackend,
+        backend: &StorageBackend<'_>,
         force_overwrite: bool,
     ) -> Result<Option<SyncChoices>> {
         info!("downloading files from cloud...");
@@ -195,7 +195,7 @@ impl<'f> SyncMgr<'f> {
 
         Ok(None)
     }
-    pub async fn upload(&self, backend: &mut StorageBackend) -> Result<()> {
+    pub async fn upload(&self, backend: &mut StorageBackend<'_>) -> Result<()> {
         info!("uploading files to cloud...");
 
         let latest_write = ModifiedMetadata::from_sys_info();

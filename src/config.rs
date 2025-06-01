@@ -72,7 +72,7 @@ impl Default for BackendTy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum Secret {
+pub enum Secret {
     SystemSecret(String),
 
     /// Plaintext storage directly inline
@@ -131,7 +131,7 @@ impl FromStr for Secret {
 pub struct WebDavInfo {
     pub url: String,
     pub username: String,
-    pub psk: Option<String>,
+    pub psk: Option<Secret>,
     pub root: PathBuf,
 }
 

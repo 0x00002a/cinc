@@ -2,15 +2,16 @@ use std::path::{Path, PathBuf};
 
 use super::Result;
 
-use crate::{config::WebDavInfo, paths::PathExt};
+use crate::{config::WebDavInfo, paths::PathExt, secrets::SecretsApi};
 use reqwest::{
     Method, StatusCode, {Client, RequestBuilder},
 };
 use tracing::debug;
 
-pub struct WebDavStore {
+pub struct WebDavStore<'s> {
     client: Client,
     cfg: WebDavInfo,
+    secrets: &'s SecretsApi<'s>,
 }
 
 fn calc_mkdir_all_paths(dir: &Path) -> Vec<PathBuf> {
@@ -28,22 +29,46 @@ fn calc_mkdir_all_paths(dir: &Path) -> Vec<PathBuf> {
     r
 }
 
-impl WebDavStore {
-    pub fn new(cfg: WebDavInfo) -> Self {
+impl<'s> WebDavStore<'s> {
+    pub fn new(cfg: WebDavInfo, secrets: &'s SecretsApi) -> Self {
         Self {
             client: Client::new(),
             cfg,
+            secrets,
         }
     }
 
-    fn mk_req_abs(&self, method: Method, url: &str) -> RequestBuilder {
+    async fn mk_req_abs(&self, method: Method, url: &str) -> Result<RequestBuilder> {
         debug!("dispatching {method:?} request to {url}");
-        self.client
+        let psk = self.cfg.psk.as_ref().map(|s| async move {
+            match s {
+                crate::config::Secret::SystemSecret(name) => {
+                    assert!(
+                        self.secrets.available(),
+                        "system secrets must be available to use them in a config"
+                    );
+                    let s = self.secrets.get_item(name).await?;
+                    let sv = s.ok_or_else(|| {
+                        super::BackendError::CouldNotLocateSecret(name.to_owned())
+                    })?;
+                    let s = String::from_utf8(sv).expect("failed to convert from secret to utf8");
+                    Ok::<_, super::BackendError>(s)
+                }
+                crate::config::Secret::Plain(p) => Ok(p.to_owned()),
+            }
+        });
+        let psk = if let Some(p) = psk {
+            Some(p.await?)
+        } else {
+            None
+        };
+        Ok(self
+            .client
             .request(method, url)
-            .basic_auth(&self.cfg.username, self.cfg.psk.as_deref())
+            .basic_auth(&self.cfg.username, psk.as_deref()))
     }
 
-    fn mk_req(&self, method: Method, path: &Path) -> RequestBuilder {
+    async fn mk_req(&self, method: Method, path: &Path) -> Result<RequestBuilder> {
         let url = Path::new(&self.cfg.url)
             .join_good(
                 self.cfg
@@ -55,7 +80,7 @@ impl WebDavStore {
             .to_str()
             .unwrap()
             .to_owned();
-        self.mk_req_abs(method, &url)
+        self.mk_req_abs(method, &url).await
     }
 
     /// creates a single directory, requires parents to be created
@@ -72,6 +97,7 @@ impl WebDavStore {
                 Method::from_bytes(b"MKCOL").expect("failed to make mkcol method"),
                 &url,
             )
+            .await?
             .send()
             .await?;
         resp.error_for_status()?;
@@ -90,7 +116,7 @@ impl WebDavStore {
     }
 }
 
-impl WebDavStore {
+impl WebDavStore<'_> {
     pub async fn write_file(&mut self, at: &Path, bytes: &[u8]) -> super::Result<()> {
         debug!("writing to {at:?}");
         if !self
@@ -102,6 +128,7 @@ impl WebDavStore {
         }
         let resp = self
             .mk_req(Method::PUT, at)
+            .await?
             .body(bytes.to_owned())
             .send()
             .await?;
@@ -117,6 +144,7 @@ impl WebDavStore {
         debug!("read {at:?}");
         let data = self
             .mk_req(Method::GET, at)
+            .await?
             .send()
             .await?
             .error_for_status()?;
@@ -126,7 +154,7 @@ impl WebDavStore {
 
     pub async fn exists(&self, f: &Path) -> super::Result<bool> {
         debug!("check exists for {f:?}");
-        let req = self.mk_req(Method::GET, f).send().await?;
+        let req = self.mk_req(Method::GET, f).await?.send().await?;
         Ok(req.status() != StatusCode::NOT_FOUND)
     }
 }

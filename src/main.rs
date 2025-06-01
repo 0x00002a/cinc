@@ -6,14 +6,16 @@ use std::{
     process::exit,
     time::SystemTime,
 };
+use uuid::Uuid;
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Local;
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    config::{BackendInfo, BackendTy, Config, SteamId, WebDavInfo, default_manifest_url},
+    config::{BackendInfo, BackendTy, Config, Secret, SteamId, WebDavInfo, default_manifest_url},
     manifest::{GameManifests, Store},
     paths::{cache_dir, config_dir, log_dir},
+    secrets::SecretsApi,
     sync::SyncMgr,
     ui::{CincUi, SyncChoices, SyncIssueInfo},
 };
@@ -130,6 +132,14 @@ fn write_cfg(cfg: &Config, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+fn user_input_yesno(prompt: &str, default: bool) -> Result<bool> {
+    eprint!("{prompt}");
+    let mut to = String::new();
+    std::io::stdin().read_line(&mut to)?;
+    let to = to.trim_end();
+    Ok(matches!(to.to_lowercase().as_str(), "y" | "yes") || (to.is_empty() && default))
+}
+
 macro_rules! print_success {
     ($($arg:tt)*) => {
         println!("{}", format!($($arg)*).green())
@@ -143,6 +153,7 @@ async fn run() -> anyhow::Result<()> {
         update_manifest()?;
     }
     init_file_logging().expect("failed to init file logging");
+    let secrets = SecretsApi::new().await?;
 
     match &args.op {
         cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {
@@ -191,7 +202,7 @@ async fn run() -> anyhow::Result<()> {
                             (cfg.default_backend.is_none() && *i == 0)
                                 || (cfg.default_backend.as_ref() == Some(&b.name))
                         })
-                        .map(|(_, b)| b.to_backend(name))
+                        .map(|(_, b)| b.to_backend(name, &secrets))
                         .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
                     if !args.dry_run {
                         let info = match SyncMgr::from_steam_game(game, app_id) {
@@ -290,7 +301,20 @@ async fn run() -> anyhow::Result<()> {
                             let webdav_psk = if webdav_psk.is_empty() {
                                 None
                             } else {
-                                Some(webdav_psk)
+                                let use_secrets = secrets.available()
+                                    && user_input_yesno(
+                                        "use system secrets API to store this password? (recommended) [Y/n]",
+                                        true,
+                                    )?;
+                                Some(if use_secrets {
+                                    let secret_name = Uuid::new_v4().to_string();
+                                    if !args.dry_run {
+                                        secrets.add_item(&secret_name, &webdav_psk).await?;
+                                    }
+                                    Secret::SystemSecret(secret_name)
+                                } else {
+                                    Secret::Plain(webdav_psk)
+                                })
                             };
                             BackendTy::WebDav(WebDavInfo {
                                 url: webdav_url.to_owned().expect("missing webdav url"),

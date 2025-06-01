@@ -7,7 +7,10 @@ use thiserror::Error;
 use typesum::sumtype;
 use webdav::WebDavStore;
 
-use crate::config::{BackendInfo, BackendTy, WebDavInfo};
+use crate::{
+    config::{BackendInfo, BackendTy, WebDavInfo},
+    secrets::SecretsApi,
+};
 
 pub mod filesystem;
 pub mod webdav;
@@ -28,7 +31,14 @@ pub enum BackendError {
 
     #[error(transparent)]
     Reqwuest(#[from] reqwest::Error),
+
+    #[error(transparent)]
+    SecretService(#[from] secret_service::Error),
+
+    #[error("could not find secret '{0}' in system store")]
+    CouldNotLocateSecret(String),
 }
+
 type Result<T, E = BackendError> = std::result::Result<T, E>;
 
 pub const SYNC_TIME_FILE: &str = "mod-meta.json";
@@ -53,12 +63,12 @@ impl ModifiedMetadata {
     }
 }
 #[sumtype]
-pub enum StorageBackendTy {
-    WebDav(WebDavStore),
+pub enum StorageBackendTy<'s> {
+    WebDav(WebDavStore<'s>),
     Fs(FilesystemStore),
 }
-pub struct StorageBackend {
-    backend: StorageBackendTy,
+pub struct StorageBackend<'s> {
+    backend: StorageBackendTy<'s>,
 }
 
 macro_rules! forward {
@@ -81,8 +91,8 @@ macro_rules! forward {
     }
 }
 
-impl StorageBackend {
-    pub fn new(backend: impl Into<StorageBackendTy>) -> Self {
+impl<'s> StorageBackend<'s> {
+    pub fn new(backend: impl Into<StorageBackendTy<'s>>) -> Self {
         Self {
             backend: backend.into(),
         }
@@ -110,15 +120,22 @@ impl StorageBackend {
 }
 
 impl BackendInfo {
-    pub fn to_backend(&self, game_name: &str) -> Result<StorageBackend> {
+    pub fn to_backend<'a>(
+        &self,
+        game_name: &str,
+        secrets: &'a SecretsApi,
+    ) -> Result<StorageBackend<'a>> {
         Ok(match &self.info {
             BackendTy::Filesystem { root } => {
                 StorageBackend::new(FilesystemStore::new(root.join(game_name))?)
             }
-            BackendTy::WebDav(web_dav_info) => StorageBackend::new(WebDavStore::new(WebDavInfo {
-                root: web_dav_info.root.join(game_name),
-                ..web_dav_info.to_owned()
-            })),
+            BackendTy::WebDav(web_dav_info) => StorageBackend::new(WebDavStore::new(
+                WebDavInfo {
+                    root: web_dav_info.root.join(game_name),
+                    ..web_dav_info.to_owned()
+                },
+                secrets,
+            )),
         })
     }
 }
