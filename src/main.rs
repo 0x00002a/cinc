@@ -123,7 +123,8 @@ fn write_cfg(cfg: &Config) -> Result<()> {
     std::fs::write(&cfg_file, &cfg)?;
     Ok(())
 }
-fn run() -> anyhow::Result<()> {
+
+async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
     if args.update {
@@ -174,14 +175,14 @@ fn run() -> anyhow::Result<()> {
                     })
                     .map(|(_, b)| b.to_backend(name))
                     .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
-                if let Some(sync_info) = info.are_local_files_newer(&b)? {
+                if let Some(sync_info) = info.are_local_files_newer(&b).await? {
                     warn!(
                         "found local files newer than local, showing confirmation box to the user..."
                     );
 
                     match spawn_sync_confirm(sync_info)? {
                         SyncChoices::Continue => {
-                            info.download(&b, true)?;
+                            info.download(&b, true).await?;
                         }
                         SyncChoices::Upload => {}
                         SyncChoices::Exit => {
@@ -189,7 +190,7 @@ fn run() -> anyhow::Result<()> {
                         }
                     }
                 } else {
-                    info.download(&b, false)?;
+                    info.download(&b, false).await?;
                 }
                 drop(info); // its info is no longer valid after the command runs bc it may create new files
 
@@ -212,7 +213,7 @@ fn run() -> anyhow::Result<()> {
                             return Err(e);
                         }
                     };
-                    info.upload(&mut b)?;
+                    info.upload(&mut b).await?;
                 } else {
                     debug!("not uploading due to --debug-no-upload flag");
                 }
@@ -337,7 +338,8 @@ fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
     Ok(choice)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     if std::env::args().any(|s| matches!(s.as_str(), "--help" | "-h" | "help")) {
         CliArgs::parse(); // this will print the help to the console
     }
@@ -361,7 +363,7 @@ fn main() {
             prev_hook(info);
         }));
     }
-    if let Err(e) = run() {
+    if let Err(e) = run().await {
         tracing::error!("{e:?}");
         spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
     }

@@ -63,19 +63,19 @@ pub struct StorageBackend {
 
 macro_rules! forward {
     (fn $name:ident($($argname:ident : $argty:ty),*) -> $retr:ty) => {
-        pub fn $name (&self, $($argname : $argty),*) -> Result<$retr> {
+        pub async fn $name (&self, $($argname : $argty),*) -> Result<$retr> {
             match &self.backend {
-                StorageBackendTy::WebDav(b) => b.$name($($argname),*),
-                StorageBackendTy::Fs(b) => b.$name($($argname),*),
+                StorageBackendTy::WebDav(b) => b.$name($($argname),*).await,
+                StorageBackendTy::Fs(b) => b.$name($($argname),*).await,
             }
         }
     };
 
     (fn mut $name:ident($($argname:ident : $argty:ty),*) -> $retr:ty) => {
-        pub fn $name (&mut self, $($argname : $argty),*) -> Result<$retr> {
+        pub async fn $name (&mut self, $($argname : $argty),*) -> Result<$retr> {
             match &mut self.backend {
-                StorageBackendTy::WebDav(b) => b.$name($($argname),*),
-                StorageBackendTy::Fs(b) => b.$name($($argname),*),
+                StorageBackendTy::WebDav(b) => b.$name($($argname),*).await,
+                StorageBackendTy::Fs(b) => b.$name($($argname),*).await,
             }
         }
     }
@@ -88,26 +88,24 @@ impl StorageBackend {
         }
     }
     forward!(fn mut write_file(at: &Path, bytes: &[u8]) -> ());
-
     forward!(fn read_file(at: &Path) -> Vec<u8>);
-
     forward!(fn exists(at: &Path) -> bool);
 
-    pub fn read_file_str(&self, at: &Path) -> Result<String> {
-        Ok(String::from_utf8(self.read_file(at)?)?)
+    pub async fn read_file_str(&self, at: &Path) -> Result<String> {
+        Ok(String::from_utf8(self.read_file(at).await?)?)
     }
-    pub fn read_sync_time(&self) -> Result<Option<ModifiedMetadata>> {
+    pub async fn read_sync_time(&self) -> Result<Option<ModifiedMetadata>> {
         let sync_time_file = Path::new(SYNC_TIME_FILE);
-        if !self.exists(sync_time_file)? {
+        if !self.exists(sync_time_file).await? {
             return Ok(None);
         }
-        let f = self.read_file(sync_time_file)?;
+        let f = self.read_file(sync_time_file).await?;
         Ok(Some(serde_json::from_slice(&f)?))
     }
 
-    pub fn write_sync_time(&mut self, metadata: &ModifiedMetadata) -> Result<()> {
+    pub async fn write_sync_time(&mut self, metadata: &ModifiedMetadata) -> Result<()> {
         let data = serde_json::to_vec(metadata)?;
-        self.write_file(Path::new(SYNC_TIME_FILE), &data)
+        self.write_file(Path::new(SYNC_TIME_FILE), &data).await
     }
 }
 

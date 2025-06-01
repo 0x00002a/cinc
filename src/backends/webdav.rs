@@ -4,8 +4,7 @@ use super::Result;
 
 use crate::{config::WebDavInfo, paths::PathExt};
 use reqwest::{
-    Method, StatusCode,
-    blocking::{Client, RequestBuilder},
+    Method, StatusCode, {Client, RequestBuilder},
 };
 use tracing::debug;
 
@@ -62,7 +61,7 @@ impl WebDavStore {
     /// creates a single directory, requires parents to be created
     ///
     /// Requires that dir is already parented to root
-    fn mkdir_abs(&self, dir: &Path) -> Result<()> {
+    async fn mkdir_abs(&self, dir: &Path) -> Result<()> {
         let url = Path::new(&self.cfg.url)
             .join_good(dir)
             .to_str()
@@ -73,31 +72,39 @@ impl WebDavStore {
                 Method::from_bytes(b"MKCOL").expect("failed to make mkcol method"),
                 &url,
             )
-            .send()?;
+            .send()
+            .await?;
         resp.error_for_status()?;
         Ok(())
     }
 
-    fn mkdir_all(&self, dir: &Path) -> Result<()> {
+    async fn mkdir_all(&self, dir: &Path) -> Result<()> {
         let dir = self.cfg.root.join_good(dir);
         debug!("mkdir all for {dir:?}");
         assert!(dir.is_absolute());
         let parts = calc_mkdir_all_paths(&dir);
         for p in parts.into_iter().skip(1) {
-            self.mkdir_abs(&p)?;
+            self.mkdir_abs(&p).await?;
         }
         Ok(())
     }
 }
 
 impl WebDavStore {
-    pub fn write_file(&mut self, at: &Path, bytes: &[u8]) -> super::Result<()> {
+    pub async fn write_file(&mut self, at: &Path, bytes: &[u8]) -> super::Result<()> {
         debug!("writing to {at:?}");
-        if !self.exists(at.parent().expect("no parent path for file"))? {
+        if !self
+            .exists(at.parent().expect("no parent path for file"))
+            .await?
+        {
             debug!("creating parent directories for {at:?}");
-            self.mkdir_all(at.parent().unwrap())?;
+            self.mkdir_all(at.parent().unwrap()).await?;
         }
-        let resp = self.mk_req(Method::PUT, at).body(bytes.to_owned()).send()?;
+        let resp = self
+            .mk_req(Method::PUT, at)
+            .body(bytes.to_owned())
+            .send()
+            .await?;
         if resp.status() == StatusCode::CONFLICT {
             panic!("invalidly scoped but we should've checked for that?");
         } else {
@@ -106,16 +113,20 @@ impl WebDavStore {
         Ok(())
     }
 
-    pub fn read_file(&self, at: &Path) -> super::Result<Vec<u8>> {
+    pub async fn read_file(&self, at: &Path) -> super::Result<Vec<u8>> {
         debug!("read {at:?}");
-        let data = self.mk_req(Method::GET, at).send()?.error_for_status()?;
-        let d = data.bytes()?;
+        let data = self
+            .mk_req(Method::GET, at)
+            .send()
+            .await?
+            .error_for_status()?;
+        let d = data.bytes().await?;
         Ok(d.to_vec())
     }
 
-    pub fn exists(&self, f: &Path) -> super::Result<bool> {
+    pub async fn exists(&self, f: &Path) -> super::Result<bool> {
         debug!("check exists for {f:?}");
-        let req = self.mk_req(Method::GET, f).send()?;
+        let req = self.mk_req(Method::GET, f).send().await?;
         Ok(req.status() != StatusCode::NOT_FOUND)
     }
 }

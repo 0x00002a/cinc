@@ -155,8 +155,11 @@ impl<'f> SyncMgr<'f> {
     fn get_latest_modified_time(&self) -> Result<Option<DateTime<Utc>>> {
         Ok(self.get_modified_times()?.into_iter().max())
     }
-    pub fn are_local_files_newer(&self, backend: &StorageBackend) -> Result<Option<SyncIssueInfo>> {
-        if let Some(cloud_time) = backend.read_sync_time()? {
+    pub async fn are_local_files_newer(
+        &self,
+        backend: &StorageBackend,
+    ) -> Result<Option<SyncIssueInfo>> {
+        if let Some(cloud_time) = backend.read_sync_time().await? {
             if let Some(newest_local) = self.get_latest_modified_time()? {
                 if newest_local > cloud_time.last_write_timestamp {
                     return Ok(Some(SyncIssueInfo {
@@ -171,37 +174,39 @@ impl<'f> SyncMgr<'f> {
         Ok(None)
     }
 
-    pub fn download(
+    pub async fn download(
         &self,
         backend: &StorageBackend,
         force_overwrite: bool,
     ) -> Result<Option<SyncChoices>> {
         info!("downloading files from cloud...");
         // check that we are not overwriting anything
-        assert!(force_overwrite || self.are_local_files_newer(backend)?.is_none());
+        debug_assert!(force_overwrite || self.are_local_files_newer(backend).await?.is_none());
 
         let ap = Path::new(ARCHIVE_NAME);
-        if !backend.exists(ap)? {
+        if !backend.exists(ap).await? {
             debug!("...nothing to do");
             return Ok(None);
         }
 
-        let archive = backend.read_file(ap)?;
+        let archive = backend.read_file(ap).await?;
         let uncomp = self.decompress_files(&archive)?;
         self.untar_files(&uncomp)?;
 
         Ok(None)
     }
-    pub fn upload(&self, backend: &mut StorageBackend) -> Result<()> {
+    pub async fn upload(&self, backend: &mut StorageBackend) -> Result<()> {
         info!("uploading files to cloud...");
 
         let latest_write = ModifiedMetadata::from_sys_info();
         // need to do this before any of the others
-        backend.write_sync_time(&latest_write)?;
+        backend.write_sync_time(&latest_write).await?;
 
         let archive = self.compress_files()?;
 
-        backend.write_file(Path::new(ARCHIVE_NAME), &archive)?;
+        backend
+            .write_file(Path::new(ARCHIVE_NAME), &archive)
+            .await?;
 
         Ok(())
     }

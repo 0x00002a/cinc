@@ -25,7 +25,7 @@ impl FilesystemStore {
 }
 
 impl FilesystemStore {
-    pub fn write_file(&mut self, at: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    pub async fn write_file(&mut self, at: &std::path::Path, bytes: &[u8]) -> Result<()> {
         let p = self.filename(at);
         debug!("writing to {p:?}");
         assert!(!p.is_dir());
@@ -35,11 +35,11 @@ impl FilesystemStore {
         Ok(fs::write(p, bytes)?)
     }
 
-    pub fn read_file(&self, at: &Path) -> Result<Vec<u8>> {
+    pub async fn read_file(&self, at: &Path) -> Result<Vec<u8>> {
         Ok(fs::read(self.filename(at))?)
     }
 
-    pub fn exists(&self, f: &Path) -> Result<bool> {
+    pub async fn exists(&self, f: &Path) -> Result<bool> {
         Ok(std::fs::exists(self.filename(f))?)
     }
 }
