@@ -113,6 +113,7 @@ fn read_config() -> Result<Config> {
 
 fn write_cfg(cfg: &Config) -> Result<()> {
     let cfg_dir = &config_dir();
+    debug!("writing config to {cfg_dir:?}");
     fs::create_dir_all(cfg_dir)?;
     let cfg_file = cfg_dir.join(CFG_FILE_NAME);
     assert!(
@@ -130,10 +131,10 @@ async fn run() -> anyhow::Result<()> {
     if args.update {
         update_manifest()?;
     }
+    init_file_logging().expect("failed to init file logging");
 
     match &args.op {
         cinc::args::Operation::Launch(args @ LaunchArgs { command, .. }) => {
-            init_file_logging().expect("failed to init logging");
             let cfg = read_config()?;
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
@@ -358,6 +359,7 @@ async fn main() {
     if std::env::args().any(|s| matches!(s.as_str(), "--help" | "-h" | "help")) {
         CliArgs::parse(); // this will print the help to the console
     }
+    let is_without_term = std::env::args().contains("launch");
     if !std::env::args().contains("--no-panic-hook") {
         let prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
@@ -371,8 +373,10 @@ async fn main() {
                         .downcast_ref::<&str>()
                         .map(|s| (*s).to_owned())
                 });
-            if let Some(msg) = msg {
-                let _ = spawn_popup("Cinc panic", CincUi::Panic(msg, info.location()));
+            if is_without_term {
+                if let Some(msg) = msg {
+                    let _ = spawn_popup("Cinc panic", CincUi::Panic(msg, info.location()));
+                }
             }
 
             prev_hook(info);
@@ -380,6 +384,8 @@ async fn main() {
     }
     if let Err(e) = run().await {
         tracing::error!("{e:?}");
-        spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
+        if is_without_term {
+            spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
+        }
     }
 }
