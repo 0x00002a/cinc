@@ -462,7 +462,7 @@ async fn main() {
         if is_without_term {
             spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
         } else {
-            eprintln!("{}", e.to_string().red());
+            eprintln!("{}", format!("{e:?}").red());
         }
         std::process::exit(1);
     }

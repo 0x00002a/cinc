@@ -71,30 +71,16 @@ impl Default for BackendTy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(tag = "ty", content = "value")]
+#[serde(rename_all = "snake_case")]
 pub enum Secret {
+    /// Secret stored in the systems keychain
+    #[serde(rename = "keychain")]
     SystemSecret(String),
 
     /// Plaintext storage directly inline
     Plain(String),
-}
-
-impl<'de> serde::Deserialize<'de> for Secret {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Ok(s.parse().unwrap())
-    }
-}
-impl serde::Serialize for Secret {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
 }
 
 impl Display for Secret {
@@ -214,6 +200,15 @@ mod tests {
     }
 
     #[test]
+    fn plain_secret_serializes_with_no_prefix() {
+        let p = "keyring:hello";
+        assert_eq!(
+            p.parse::<Secret>().unwrap(),
+            Secret::SystemSecret("hello".to_owned())
+        );
+    }
+
+    #[test]
     fn example_config_can_parse() {
         let example_cfg = r#"
 default_backend = "cloud"
@@ -228,7 +223,7 @@ name = "cloud"
 type = "web_dav"
 url = "https://webdav.example.com/files/"
 username = "example@example.com"
-psk = "bingle"
+psk = { ty = "plain", value = "bingle" }
 root = "/cinc"
 
         "#;

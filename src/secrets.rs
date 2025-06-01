@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use secret_service::{Collection, EncryptionType, SecretService};
-use tracing::{debug, info};
+use tracing::debug;
 
 const CINC_ATTR_NAME: &str = "id";
 
@@ -11,6 +11,7 @@ struct Inner<'s> {
 }
 
 impl<'s> Inner<'s> {
+    #[allow(unused)]
     async fn list_collections(&self) -> Result<()> {
         let cs = self.hdl.get_all_collections().await?;
         for c in cs {
