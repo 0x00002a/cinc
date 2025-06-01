@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 repository = "https://github.com/0x00002a/cinc"
 homepage = "https://github.com/0x00002a/cinc"
-description = "Cloud sync replacement for games it"
+description = "Cloud sync replacement for games that don't have it"
 
 
 [dependencies]
