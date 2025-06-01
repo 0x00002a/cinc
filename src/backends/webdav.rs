@@ -87,6 +87,7 @@ impl<'s> WebDavStore<'s> {
     ///
     /// Requires that dir is already parented to root
     async fn mkdir_abs(&self, dir: &Path) -> Result<()> {
+        debug!("mkdir for {dir:?}");
         let url = Path::new(&self.cfg.url)
             .join_good(dir)
             .to_str()

@@ -26,8 +26,8 @@ use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-fn grab_manifest(url: &str) -> Result<String> {
-    Ok(reqwest::blocking::get(url)?.text()?)
+async fn grab_manifest(url: &str) -> Result<String> {
+    Ok(reqwest::get(url).await?.text().await?)
 }
 
 fn init_file_logging() -> Result<()> {
@@ -54,7 +54,7 @@ fn init_file_logging() -> Result<()> {
     Ok(())
 }
 
-fn update_manifest() -> Result<GameManifests> {
+async fn update_manifest() -> Result<GameManifests> {
     let cache = &cache_dir();
     if !std::fs::exists(cache)? {
         info!("creating cache dir...");
@@ -63,7 +63,7 @@ fn update_manifest() -> Result<GameManifests> {
     let path = &cache.join("manifest.bin");
 
     info!("grabbing manifest...");
-    let txt = grab_manifest(&default_manifest_url())?;
+    let txt = grab_manifest(&default_manifest_url()).await?;
     info!("parsing manifest...");
     let manifest: GameManifests = serde_yaml::from_str(&txt).context("while parsing manifest")?;
     info!("write manifest...");
@@ -75,7 +75,7 @@ fn update_manifest() -> Result<GameManifests> {
     Ok(manifest)
 }
 
-fn get_game_manifests() -> Result<GameManifests> {
+async fn get_game_manifests() -> Result<GameManifests> {
     let cache = &cache_dir();
     if !std::fs::exists(cache)? {
         info!("creating cache dir...");
@@ -83,7 +83,7 @@ fn get_game_manifests() -> Result<GameManifests> {
     }
     let path = &cache.join("manifest.bin");
     if !std::fs::exists(path)? {
-        update_manifest()
+        update_manifest().await
     } else {
         info!("reading cached manifest...");
         bincode::serde::decode_from_std_read(
@@ -150,7 +150,7 @@ async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
     if args.update {
-        update_manifest()?;
+        update_manifest().await?;
     }
     init_file_logging().expect("failed to init file logging");
     let secrets = SecretsApi::new().await?;
@@ -162,7 +162,7 @@ async fn run() -> anyhow::Result<()> {
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
             }
-            let manifests = get_game_manifests()?;
+            let manifests = get_game_manifests().await?;
             let Some(platform) = largs.resolve_platform() else {
                 bail!(
                     "failed to resolve platform we are running on, try specifying it explicitly with --platform"
