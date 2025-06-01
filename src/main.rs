@@ -124,13 +124,6 @@ fn write_cfg(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
-fn user_input(prompt: &str) -> Result<String> {
-    print!("{prompt}");
-    let mut to = String::new();
-    std::io::stdin().read_line(&mut to)?;
-    Ok(to)
-}
-
 async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
