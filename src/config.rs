@@ -1,6 +1,7 @@
-use std::{fmt::Display, path::PathBuf};
+use std::{fmt::Display, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::paths::data_dir;
 
@@ -70,6 +71,62 @@ impl Default for BackendTy {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Secret {
+    SystemSecret(String),
+
+    /// Plaintext storage directly inline
+    Plain(String),
+}
+
+impl<'de> serde::Deserialize<'de> for Secret {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(s.parse().unwrap())
+    }
+}
+impl serde::Serialize for Secret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl Display for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("keyring:")?;
+        f.write_str(match self {
+            Secret::SystemSecret(s) => s,
+            Secret::Plain(s) => s,
+        })
+    }
+}
+
+const SYS_SECRET_PREFIX: &str = "keyring:";
+
+#[derive(Error, Debug)]
+#[error("failed to parse secret {input}")]
+pub struct SecretParseError {
+    input: String,
+}
+
+impl FromStr for Secret {
+    type Err = SecretParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(if let Some(s) = s.strip_prefix(SYS_SECRET_PREFIX) {
+            Self::SystemSecret(s.to_owned())
+        } else {
+            Self::Plain(s.to_owned())
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WebDavInfo {
     pub url: String,
@@ -124,4 +181,18 @@ impl SteamId64 {
 pub enum BackendType {
     Filesystem,
     WebDav,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::Secret;
+
+    #[test]
+    fn secret_is_stripped_of_keyring_prefix() {
+        let p = "keyring:hello";
+        assert_eq!(
+            p.parse::<Secret>().unwrap(),
+            Secret::SystemSecret("hello".to_owned())
+        );
+    }
 }
