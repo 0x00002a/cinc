@@ -18,15 +18,10 @@ clap = { version = "4.5.38", features = ["color", "derive"] }
 colored = "3.0.0"
 crossterm = "0.29.0"
 dirs = "6.0.0"
-eframe = { version = "0.31.1", default-features = false, features = [
-    "wayland",
-    "wgpu",
-    "x11",
-] }
-egui = "0.31.1"
 fs-err = "3.1.0"
 gethostname = "1.0.2"
 itertools = "0.14.0"
+popout = "0.1.0"
 reqwest = { version = "0.12.15" }
 secret-service = { version = "5.0.0", features = ["rt-tokio-crypto-rust"] }
 serde = { version = "1.0.219", features = ["derive"] }

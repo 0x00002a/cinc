@@ -27,11 +27,9 @@ use cinc::{
     paths::{cache_dir, config_dir, log_dir},
     secrets::SecretsApi,
     sync::SyncMgr,
-    ui::{CincUi, SyncChoices, SyncIssueInfo},
+    ui::{self, SyncChoices, SyncIssueInfo},
 };
 use clap::Parser;
-use eframe::NativeOptions;
-use egui::ViewportBuilder;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
@@ -269,11 +267,11 @@ async fn run() -> anyhow::Result<()> {
                                 "found local files newer than local, showing confirmation box to the user..."
                             );
 
-                            match spawn_sync_confirm(sync_info)? {
-                                SyncChoices::Continue => {
+                            match ui::spawn_sync_confirm(sync_info)? {
+                                SyncChoices::Download => {
                                     info.download(&b, true).await?;
                                 }
-                                SyncChoices::Upload => {}
+                                SyncChoices::Continue => {}
                                 SyncChoices::Exit => {
                                     return Ok(());
                                 }
@@ -320,7 +318,7 @@ async fn run() -> anyhow::Result<()> {
             last_writer,
         } => {
             let now = Local::now().to_utc();
-            let r = spawn_sync_confirm(SyncIssueInfo {
+            let r = ui::spawn_sync_confirm(SyncIssueInfo {
                 remote_name: remote_name.to_owned(),
                 local_time: now,
                 remote_time: now,
@@ -446,48 +444,6 @@ async fn run() -> anyhow::Result<()> {
     }
     Ok(())
 }
-fn spawn_popup(title: &str, state: CincUi) -> eframe::Result {
-    eframe::run_native(
-        title,
-        NativeOptions {
-            centered: true,
-            viewport: ViewportBuilder::default()
-                .with_always_on_top()
-                .with_close_button(true)
-                .with_minimize_button(false)
-                .with_inner_size(if !matches!(state, CincUi::SyncIssue { .. }) {
-                    (200.0, 100.0)
-                } else {
-                    (500.0, 230.0)
-                }),
-
-            persist_window: false,
-            ..Default::default()
-        },
-        Box::new(|_cc| Ok(Box::new(state))),
-    )
-}
-
-/// Spawn a dialog warning the user of sync issues and asking them whether to
-/// continue. Returns whether the user elected to continue
-fn spawn_sync_confirm(info: SyncIssueInfo) -> Result<SyncChoices> {
-    let mut choice = SyncChoices::Exit;
-    spawn_popup(
-        "Cloud conflict",
-        CincUi::SyncIssue {
-            info,
-            on_continue: Box::new(|choice| {
-                *choice = SyncChoices::Continue;
-            }),
-            on_upload: Box::new(|choice| {
-                *choice = SyncChoices::Upload;
-            }),
-            choice_store: &mut choice,
-        },
-    )
-    .map_err(|e| anyhow!("{e}"))?;
-    Ok(choice)
-}
 
 #[tokio::main]
 async fn main() {
@@ -510,7 +466,7 @@ async fn main() {
                 });
             if is_without_term {
                 if let Some(msg) = msg {
-                    let _ = spawn_popup("Cinc panic", CincUi::Panic(msg, info.location()));
+                    let _ = ui::show_panic_dialog(msg, info.location());
                 }
             }
 
@@ -520,7 +476,7 @@ async fn main() {
     if let Err(e) = run().await {
         tracing::error!("{e:?}");
         if is_without_term {
-            spawn_popup("Cinc error", CincUi::Error(e)).expect("failed to open egui");
+            let _ = ui::show_error_dialog(&e);
         } else {
             eprintln!("{}", format!("{e:?}").red());
         }

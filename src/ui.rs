@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use egui::{Color32, RichText, ViewportCommand};
+use popout::{Color32, LogicalSize, RichText};
 
 pub struct SyncIssueInfo {
     pub local_time: DateTime<Utc>,
@@ -10,61 +10,30 @@ pub struct SyncIssueInfo {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SyncChoices {
     /// User chose to continue (download changes)
-    Continue,
+    Download = 0,
     /// User chose to upload local changes to remote
-    Upload,
+    Continue = 1,
     /// User chose to abort completely
-    Exit,
+    Exit = 2,
 }
 
-pub enum CincUi<'s> {
-    Error(anyhow::Error),
-    Panic(String, Option<&'s std::panic::Location<'s>>),
-    SyncIssue {
-        info: SyncIssueInfo,
-        on_continue: Box<dyn FnMut(&mut SyncChoices)>,
-        on_upload: Box<dyn FnMut(&mut SyncChoices)>,
-        choice_store: &'s mut SyncChoices,
-    },
-}
-
-impl<'s> eframe::App for CincUi<'s> {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| match self {
-            CincUi::Error(err) => {
-                ui.label("error encountered");
-                ui.label(format!("{err:?}"));
-                if ui.button("close").clicked() {
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
-                }
-            }
-            CincUi::Panic(msg, loc) => {
-                ui.label("panic!");
-                ui.label(&*msg);
-                if let Some(loc) = loc {
-                    ui.label(format!("at {}:{}:{}", loc.file(), loc.line(), loc.column()));
-                }
-                if ui.button("close").clicked() {
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
-                }
-            }
-            CincUi::SyncIssue {
-                info,
-                on_continue,
-                on_upload,
-                choice_store,
-            } => {
-                let local_time = info
-                    .local_time
-                    .with_timezone(&chrono::Local)
-                    .format("%c")
-                    .to_string();
-                let remote_time = info
-                    .remote_time
-                    .with_timezone(&chrono::Local)
-                    .format("%c")
-                    .to_string();
-                ui.vertical_centered(|ui| {
+/// Spawn a dialog warning the user of sync issues and asking them whether to
+/// continue. Returns whether the user elected to continue
+pub fn spawn_sync_confirm(info: SyncIssueInfo) -> anyhow::Result<SyncChoices> {
+    let min_sz = popout::PhysicalSize::new(500.0, 200.0);
+    let r = popout::create_window(
+        |ui| {
+            let local_time = info
+                .local_time
+                .with_timezone(&chrono::Local)
+                .format("%c")
+                .to_string();
+            let remote_time = info
+                .remote_time
+                .with_timezone(&chrono::Local)
+                .format("%c")
+                .to_string();
+            ui.vertical_centered(|ui| {
                     ui.label(
                         RichText::new("Cloud conflict detected")
                             .size(20.0)
@@ -100,20 +69,57 @@ you have made any progress since the time displayed above for the remote changes
                     )
                 });
 
-                ui.horizontal(|ui| {
-                    if ui.button("Continue").clicked() {
-                        on_upload(choice_store);
-                        ctx.send_viewport_cmd(ViewportCommand::Close);
-                    }
-                    if ui.button("Download").clicked() {
-                        on_continue(choice_store);
-                        ctx.send_viewport_cmd(ViewportCommand::Close);
-                    }
-                    if ui.button("Exit").clicked() {
-                        ctx.send_viewport_cmd(ViewportCommand::Close);
-                    }
-                });
-            }
-        });
+            ui.horizontal(|ui| {
+                if ui.button("Continue").clicked() {
+                    return Some(SyncChoices::Continue);
+                }
+                if ui.button("Download").clicked() {
+                    return Some(SyncChoices::Download);
+                }
+                if ui.button("Exit").clicked() {
+                    return Some(SyncChoices::Exit);
+                }
+                None
+            })
+            .inner
+        },
+        popout::WindowAttributes::default()
+            .with_title("Cloud conflict")
+            .with_inner_size(popout::LogicalSize::new(min_sz.width, min_sz.height))
+            .with_min_inner_size(min_sz),
+    )?;
+    Ok(r.unwrap_or(SyncChoices::Exit))
+}
+
+pub fn show_error_dialog(err: &impl std::fmt::Debug) -> anyhow::Result<()> {
+    popout::dialog::Dialog::new()
+        .with_line(
+            RichText::new("error encountered")
+                .heading()
+                .color(Color32::RED),
+        )
+        .with_line(format!("{err:?}"))
+        .with_button("Exit")
+        .with_title("Error")
+        .with_size(LogicalSize::new(300, 100))
+        .show()?;
+    Ok(())
+}
+
+pub fn show_panic_dialog(
+    msg: impl Into<String>,
+    loc: Option<&std::panic::Location>,
+) -> anyhow::Result<()> {
+    let mut dialog = popout::dialog::Dialog::new()
+        .with_line(RichText::new("panic!").heading().color(Color32::RED))
+        .with_line(msg.into())
+        .with_button("Exit")
+        .with_title("Panic")
+        .with_size(LogicalSize::new(200, 100));
+
+    if let Some(loc) = loc {
+        dialog = dialog.with_line(format!("at {}:{}:{}", loc.file(), loc.line(), loc.column()));
     }
+    dialog.show()?;
+    Ok(())
 }
