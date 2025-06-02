@@ -1,6 +1,5 @@
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
