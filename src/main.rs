@@ -192,14 +192,27 @@ async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
 
+    init_file_logging().expect("failed to init file logging");
+
+    let secrets = SecretsApi::new().await?;
     let cfg_file = args.config_path.map(Ok).unwrap_or_else(get_cfg_path)?;
     let cfg = read_config(&cfg_file)?;
+    let cfg_errs = cfg.validate(&secrets).await;
+    if !cfg_errs.is_empty() {
+        bail!(
+            "errors in config\n{}",
+            cfg_errs
+                .iter()
+                .map(|e| format!("- {e}"))
+                .collect_vec()
+                .join("\n")
+        );
+    }
+
     let manifest_url = cfg.manifest_url.as_deref().unwrap_or(DEFAULT_MANIFEST_URL);
     if args.update {
         update_manifest(manifest_url).await?;
     }
-    init_file_logging().expect("failed to init file logging");
-    let secrets = SecretsApi::new().await?;
     debug!("secrets available: {}", secrets.available());
 
     match &args.op {
@@ -249,12 +262,8 @@ async fn run() -> anyhow::Result<()> {
                     let mut b = cfg
                         .backends
                         .iter()
-                        .enumerate()
-                        .find(|(i, b)| {
-                            (cfg.default_backend.is_none() && *i == 0)
-                                || (cfg.default_backend.as_ref() == Some(&b.name))
-                        })
-                        .map(|(_, b)| b.to_backend(name, &secrets))
+                        .find(|b| b.name == cfg.default_backend)
+                        .map(|b| b.to_backend(name, &secrets))
                         .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
                     if !args.dry_run {
                         let info = match SyncMgr::from_steam_game(game, app_id) {
@@ -384,14 +393,14 @@ async fn run() -> anyhow::Result<()> {
                 };
                 cfg.backends.push(new_backend);
                 if *set_default {
-                    cfg.default_backend = Some(name.to_owned());
+                    cfg.default_backend = name.to_owned();
                 }
                 write_cfg(&cfg, &cfg_file, args.dry_run)?;
                 print_success!("successfully added backend '{name}'");
             }
             cinc::args::BackendsArgs::Remove { name } => {
                 let mut cfg = cfg;
-                if cfg.default_backend.as_deref() == Some(name) {
+                if &cfg.default_backend == name {
                     bail!("cannot remove backend '{name}' as it is currently the default backend");
                 }
 
@@ -413,13 +422,11 @@ async fn run() -> anyhow::Result<()> {
                 print_success!("successfully removed backend '{name}'");
             }
             cinc::args::BackendsArgs::List => {
-                for (i, b) in cfg.backends.iter().enumerate() {
+                for b in cfg.backends.iter() {
                     println!(
                         "- {} {}",
                         b.pretty_print(),
-                        if Some(&b.name) == cfg.default_backend.as_ref()
-                            || (cfg.default_backend.is_none() && i == 1)
-                        {
+                        if b.name == cfg.default_backend {
                             "(default)"
                         } else {
                             ""
@@ -433,7 +440,7 @@ async fn run() -> anyhow::Result<()> {
                     eprintln!("backend '{name}' does not exist");
                     exit(1);
                 }
-                cfg.default_backend = Some(name.to_owned());
+                cfg.default_backend = name.to_owned();
                 write_cfg(&cfg, &cfg_file, args.dry_run)?;
                 print_success!("successfully set backend '{name}' as the default backend");
             }

@@ -3,14 +3,30 @@ use std::{fmt::Display, path::PathBuf, str::FromStr};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::paths::data_dir;
+use crate::{paths::data_dir, secrets::SecretsApi};
+
+#[derive(thiserror::Error, Debug)]
+pub enum ConfigValidationError {
+    #[error("manifest url is malformed")]
+    MalformedManifestUrl,
+    #[error("default backend specifies backend that does not exist '{0}'")]
+    InvalidDefaultBackend(String),
+    #[error("secret '{0}' for backend '{1}' does not exist in the system keyring")]
+    SecretDoesNotExist(String, String),
+
+    #[error("backend '{0}' uses secrets but the system keyring is unavailable")]
+    SecretsUnavailable(String),
+
+    #[error("failed to contact secrets service {0:?}")]
+    FailedToGetSecrets(secret_service::Error),
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     #[serde(alias = "backend")]
     pub backends: Vec<BackendInfo>,
-    /// Default backend to use, defaults to the first backend
-    pub default_backend: Option<String>,
+    /// Default backend to use
+    pub default_backend: String,
 
     pub manifest_url: Option<String>,
 }
@@ -22,7 +38,7 @@ impl Default for Config {
                 info: Default::default(),
             }],
             manifest_url: None,
-            default_backend: None,
+            default_backend: "local-store".to_owned(),
         }
     }
 }
@@ -45,6 +61,43 @@ impl Config {
                     None
                 }
             })
+    }
+    pub async fn validate(&self, secrets: &SecretsApi<'_>) -> Vec<ConfigValidationError> {
+        let mut errs = Vec::new();
+        if self.backends.iter().all(|b| b.name != self.default_backend) {
+            errs.push(ConfigValidationError::InvalidDefaultBackend(
+                self.default_backend.clone(),
+            ));
+        }
+        if self
+            .manifest_url
+            .as_ref()
+            .map(|u| reqwest::Url::parse(u).is_err())
+            .unwrap_or(false)
+        {
+            errs.push(ConfigValidationError::MalformedManifestUrl);
+        }
+        for b in &self.backends {
+            if let BackendTy::WebDav(WebDavInfo {
+                psk: Some(Secret::SystemSecret(key)),
+                ..
+            }) = &b.info
+            {
+                if !secrets.available() {
+                    errs.push(ConfigValidationError::SecretsUnavailable(b.name.clone()));
+                } else {
+                    match secrets.get_item(key).await {
+                        Ok(None) => errs.push(ConfigValidationError::SecretDoesNotExist(
+                            key.clone(),
+                            b.name.clone(),
+                        )),
+                        Err(e) => errs.push(ConfigValidationError::FailedToGetSecrets(e)),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        errs
     }
 }
 
@@ -246,7 +299,7 @@ root = "/cinc"
 
         "#;
         let r: Config = toml::from_str(example_cfg).unwrap();
-        assert_eq!(r.default_backend, Some("cloud".to_owned()));
+        assert_eq!(r.default_backend, "cloud".to_owned());
         assert_eq!(r.backends.len(), 2);
     }
 }
