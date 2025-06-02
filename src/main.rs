@@ -22,7 +22,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::Local;
 use cinc::{
     args::{CliArgs, LaunchArgs},
-    config::{BackendInfo, BackendTy, Config, Secret, SteamId, WebDavInfo, default_manifest_url},
+    config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, SteamId, WebDavInfo},
     manifest::{GameManifests, Store},
     paths::{cache_dir, config_dir, log_dir},
     secrets::SecretsApi,
@@ -62,7 +62,7 @@ fn init_file_logging() -> Result<()> {
     Ok(())
 }
 
-async fn update_manifest() -> Result<GameManifests> {
+async fn update_manifest(url: &str) -> Result<GameManifests> {
     let cache = &cache_dir();
     if !std::fs::exists(cache)? {
         info!("creating cache dir...");
@@ -71,7 +71,7 @@ async fn update_manifest() -> Result<GameManifests> {
     let path = &cache.join("manifest.bin");
 
     info!("grabbing manifest...");
-    let txt = grab_manifest(&default_manifest_url()).await?;
+    let txt = grab_manifest(url).await?;
     info!("parsing manifest...");
     let manifest: GameManifests = serde_yaml::from_str(&txt).context("while parsing manifest")?;
     info!("write manifest...");
@@ -83,7 +83,7 @@ async fn update_manifest() -> Result<GameManifests> {
     Ok(manifest)
 }
 
-async fn get_game_manifests() -> Result<GameManifests> {
+async fn get_game_manifests(url: &str) -> Result<GameManifests> {
     let cache = &cache_dir();
     if !std::fs::exists(cache)? {
         info!("creating cache dir...");
@@ -91,7 +91,7 @@ async fn get_game_manifests() -> Result<GameManifests> {
     }
     let path = &cache.join("manifest.bin");
     if !std::fs::exists(path)? {
-        update_manifest().await
+        update_manifest(url).await
     } else {
         info!("reading cached manifest...");
         bincode::serde::decode_from_std_read(
@@ -191,22 +191,24 @@ macro_rules! print_success {
 async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
+
+    let cfg_file = args.config_path.map(Ok).unwrap_or_else(get_cfg_path)?;
+    let cfg = read_config(&cfg_file)?;
+    let manifest_url = cfg.manifest_url.as_deref().unwrap_or(DEFAULT_MANIFEST_URL);
     if args.update {
-        update_manifest().await?;
+        update_manifest(manifest_url).await?;
     }
     init_file_logging().expect("failed to init file logging");
     let secrets = SecretsApi::new().await?;
     debug!("secrets available: {}", secrets.available());
-    let cfg_file = args.config_path.map(Ok).unwrap_or_else(get_cfg_path)?;
 
     match &args.op {
         cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {
-            let cfg = read_config(&cfg_file)?;
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
             }
             let manifest_start = SystemTime::now();
-            let manifests = get_game_manifests().await?;
+            let manifests = get_game_manifests(manifest_url).await?;
             let manifest_end = SystemTime::now();
             debug!(
                 "parsing the manifest took {}ms",
@@ -330,117 +332,112 @@ async fn run() -> anyhow::Result<()> {
             let psk = user_psk_input("example: ")?;
             println!("\n{psk}");
         }
-        cinc::args::Operation::BackendsConfig(backends_args) => {
-            let mut cfg = read_config(&cfg_file)?;
-            match backends_args {
-                cinc::args::BackendsArgs::Add {
-                    name,
-                    ty,
-                    root,
-                    webdav_url,
-                    webdav_username,
-                    set_default,
-                } => {
-                    if cfg.backends.iter().any(|b| &b.name == name) {
-                        bail!("a backend with the name '{name}' already exists!");
-                    }
-                    let backend_ty = match ty {
-                        cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
-                            root: root.to_owned(),
-                        },
-                        cinc::config::BackendType::WebDav => {
-                            let webdav_psk = user_psk_input(
-                                "enter webdav password, leave blank for no password: ",
-                            )?;
-                            let webdav_psk = if webdav_psk.is_empty() {
-                                None
+        cinc::args::Operation::BackendsConfig(backends_args) => match backends_args {
+            cinc::args::BackendsArgs::Add {
+                name,
+                ty,
+                root,
+                webdav_url,
+                webdav_username,
+                set_default,
+            } => {
+                let mut cfg = cfg;
+                if cfg.backends.iter().any(|b| &b.name == name) {
+                    bail!("a backend with the name '{name}' already exists!");
+                }
+                let backend_ty = match ty {
+                    cinc::config::BackendType::Filesystem => BackendTy::Filesystem {
+                        root: root.to_owned(),
+                    },
+                    cinc::config::BackendType::WebDav => {
+                        let webdav_psk =
+                            user_psk_input("enter webdav password, leave blank for no password: ")?;
+                        let webdav_psk = if webdav_psk.is_empty() {
+                            None
+                        } else {
+                            let use_secrets = secrets.available()
+                                && user_input_yesno(
+                                    "use system secrets API to store this password? (recommended) [Y/n]",
+                                    true,
+                                )?;
+                            Some(if use_secrets {
+                                let secret_name = Uuid::new_v4().to_string();
+                                if !args.dry_run {
+                                    secrets.add_item(&secret_name, &webdav_psk).await?;
+                                }
+                                Secret::SystemSecret(secret_name)
                             } else {
-                                let use_secrets = secrets.available()
-                                    && user_input_yesno(
-                                        "use system secrets API to store this password? (recommended) [Y/n]",
-                                        true,
-                                    )?;
-                                Some(if use_secrets {
-                                    let secret_name = Uuid::new_v4().to_string();
-                                    if !args.dry_run {
-                                        secrets.add_item(&secret_name, &webdav_psk).await?;
-                                    }
-                                    Secret::SystemSecret(secret_name)
-                                } else {
-                                    Secret::Plain(webdav_psk)
-                                })
-                            };
-                            BackendTy::WebDav(WebDavInfo {
-                                url: webdav_url.to_owned().expect("missing webdav url"),
-                                username: webdav_username
-                                    .to_owned()
-                                    .expect("missing webdav username"),
-                                psk: webdav_psk,
-                                root: root.to_owned(),
+                                Secret::Plain(webdav_psk)
                             })
-                        }
-                    };
-                    let new_backend = BackendInfo {
-                        name: name.to_owned(),
-                        info: backend_ty,
-                    };
-                    cfg.backends.push(new_backend);
-                    if *set_default {
-                        cfg.default_backend = Some(name.to_owned());
+                        };
+                        BackendTy::WebDav(WebDavInfo {
+                            url: webdav_url.to_owned().expect("missing webdav url"),
+                            username: webdav_username.to_owned().expect("missing webdav username"),
+                            psk: webdav_psk,
+                            root: root.to_owned(),
+                        })
                     }
-                    write_cfg(&cfg, &cfg_file, args.dry_run)?;
-                    print_success!("successfully added backend '{name}'");
-                }
-                cinc::args::BackendsArgs::Remove { name } => {
-                    if cfg.default_backend.as_deref() == Some(name) {
-                        bail!(
-                            "cannot remove backend '{name}' as it is currently the default backend"
-                        );
-                    }
-
-                    let Some(i) = cfg
-                        .backends
-                        .iter()
-                        .enumerate()
-                        .find(|(_, b)| &b.name == name)
-                        .map(|(i, _)| i)
-                    else {
-                        bail!("cannot remove backend '{name}' as it does not exist");
-                    };
-                    cfg.backends.remove(i);
-                    if !args.dry_run && secrets.available() {
-                        let used = cfg.used_keyring_ids().collect_vec();
-                        secrets.garbage_collect(&used).await?;
-                    }
-                    write_cfg(&cfg, &cfg_file, args.dry_run)?;
-                    print_success!("successfully removed backend '{name}'");
-                }
-                cinc::args::BackendsArgs::List => {
-                    for (i, b) in cfg.backends.iter().enumerate() {
-                        println!(
-                            "- {} {}",
-                            b.pretty_print(),
-                            if Some(&b.name) == cfg.default_backend.as_ref()
-                                || (cfg.default_backend.is_none() && i == 1)
-                            {
-                                "(default)"
-                            } else {
-                                ""
-                            }
-                        );
-                    }
-                }
-                cinc::args::BackendsArgs::SetDefault { name } => {
-                    if !cfg.backends.iter().any(|b| &b.name == name) {
-                        eprintln!("backend '{name}' does not exist");
-                        exit(1);
-                    }
+                };
+                let new_backend = BackendInfo {
+                    name: name.to_owned(),
+                    info: backend_ty,
+                };
+                cfg.backends.push(new_backend);
+                if *set_default {
                     cfg.default_backend = Some(name.to_owned());
-                    write_cfg(&cfg, &cfg_file, args.dry_run)?;
-                    print_success!("successfully set backend '{name}' as the default backend");
+                }
+                write_cfg(&cfg, &cfg_file, args.dry_run)?;
+                print_success!("successfully added backend '{name}'");
+            }
+            cinc::args::BackendsArgs::Remove { name } => {
+                let mut cfg = cfg;
+                if cfg.default_backend.as_deref() == Some(name) {
+                    bail!("cannot remove backend '{name}' as it is currently the default backend");
+                }
+
+                let Some(i) = cfg
+                    .backends
+                    .iter()
+                    .enumerate()
+                    .find(|(_, b)| &b.name == name)
+                    .map(|(i, _)| i)
+                else {
+                    bail!("cannot remove backend '{name}' as it does not exist");
+                };
+                cfg.backends.remove(i);
+                if !args.dry_run && secrets.available() {
+                    let used = cfg.used_keyring_ids().collect_vec();
+                    secrets.garbage_collect(&used).await?;
+                }
+                write_cfg(&cfg, &cfg_file, args.dry_run)?;
+                print_success!("successfully removed backend '{name}'");
+            }
+            cinc::args::BackendsArgs::List => {
+                for (i, b) in cfg.backends.iter().enumerate() {
+                    println!(
+                        "- {} {}",
+                        b.pretty_print(),
+                        if Some(&b.name) == cfg.default_backend.as_ref()
+                            || (cfg.default_backend.is_none() && i == 1)
+                        {
+                            "(default)"
+                        } else {
+                            ""
+                        }
+                    );
                 }
             }
-        }
+            cinc::args::BackendsArgs::SetDefault { name } => {
+                let mut cfg = cfg;
+                if !cfg.backends.iter().any(|b| &b.name == name) {
+                    eprintln!("backend '{name}' does not exist");
+                    exit(1);
+                }
+                cfg.default_backend = Some(name.to_owned());
+                write_cfg(&cfg, &cfg_file, args.dry_run)?;
+                print_success!("successfully set backend '{name}' as the default backend");
+            }
+        },
     }
     Ok(())
 }

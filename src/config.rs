@@ -1,5 +1,6 @@
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -12,8 +13,7 @@ pub struct Config {
     /// Default backend to use, defaults to the first backend
     pub default_backend: Option<String>,
 
-    #[serde(default = "default_manifest_url")]
-    pub manifest_url: String,
+    pub manifest_url: Option<String>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -22,7 +22,7 @@ impl Default for Config {
                 name: "local-store".to_owned(),
                 info: Default::default(),
             }],
-            manifest_url: default_manifest_url(),
+            manifest_url: None,
             default_backend: None,
         }
     }
@@ -49,10 +49,8 @@ impl Config {
     }
 }
 
-pub fn default_manifest_url() -> String {
-    "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml"
-        .to_owned()
-}
+pub const DEFAULT_MANIFEST_URL: &str =
+    "https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
