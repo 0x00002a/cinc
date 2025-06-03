@@ -44,10 +44,15 @@ pub struct FileInfo<'f> {
 pub struct SyncMgr<'f> {
     files: Vec<FileInfo<'f>>,
     local_info: TemplateInfo,
+    remote_name: &'f str,
 }
 
 impl<'f> SyncMgr<'f> {
-    pub fn from_steam_game(manifest: &'f GameManifest, app_id: SteamId) -> Result<Self> {
+    pub fn from_steam_game(
+        manifest: &'f GameManifest,
+        app_id: SteamId,
+        remote_name: &'f str,
+    ) -> Result<Self> {
         let steam_info = steam_dir()?;
         let (steam_app_manifest, steam_app_lib) = steam_info
             .find_app(app_id.id())?
@@ -139,7 +144,11 @@ impl<'f> SyncMgr<'f> {
             }
         }
 
-        Ok(SyncMgr { files, local_info })
+        Ok(SyncMgr {
+            files,
+            local_info,
+            remote_name,
+        })
     }
     fn get_modified_times(&self) -> Result<Vec<DateTime<Utc>>> {
         self.files
@@ -155,6 +164,7 @@ impl<'f> SyncMgr<'f> {
     fn get_latest_modified_time(&self) -> Result<Option<DateTime<Utc>>> {
         Ok(self.get_modified_times()?.into_iter().max())
     }
+
     pub async fn are_local_files_newer(
         &self,
         backend: &StorageBackend<'_>,
@@ -165,7 +175,7 @@ impl<'f> SyncMgr<'f> {
                     return Ok(Some(SyncIssueInfo {
                         local_time: newest_local,
                         remote_time: cloud_time.last_write_timestamp,
-                        remote_name: "todo".to_owned(),
+                        remote_name: self.remote_name.to_owned(),
                         remote_last_writer: cloud_time.last_write_hostname,
                     }));
                 }

@@ -7,7 +7,7 @@ use crate::{
     manifest::Store,
 };
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct CliArgs {
     /// Update the manifest
     ///
@@ -38,7 +38,7 @@ pub struct CliArgs {
     pub op: Operation,
 }
 
-#[derive(Subcommand, Clone)]
+#[derive(Subcommand, Clone, Debug)]
 pub enum Operation {
     /// For launching a game
     ///
@@ -64,7 +64,7 @@ pub enum Operation {
     BackendsConfig(BackendsArgs),
 }
 
-#[derive(Subcommand, Clone)]
+#[derive(Subcommand, Clone, Debug)]
 pub enum BackendsArgs {
     /// Add a backend to the config
     Add {
@@ -113,7 +113,7 @@ pub enum BackendsArgs {
     },
 }
 
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Debug)]
 pub struct LaunchArgs {
     #[arg(long = "save-dir", help = "Path of save files directory to sync")]
     pub save_dir: Vec<PathBuf>,

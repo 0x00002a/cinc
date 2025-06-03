@@ -22,8 +22,9 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::Local;
 use cinc::{
     args::{CliArgs, LaunchArgs},
+    backends::StorageBackend,
     config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, SteamId, WebDavInfo},
-    manifest::{GameManifests, Store},
+    manifest::{GameManifest, GameManifests, Store},
     paths::{cache_dir, config_dir, log_dir},
     secrets::SecretsApi,
     sync::SyncMgr,
@@ -187,11 +188,43 @@ macro_rules! print_success {
         println!("{}", format!($($arg)*).green())
     }
 }
+macro_rules! time {
+    ($name:literal : { $($code:tt)* }) => {
+        let time_start = SystemTime::now();
+        $($code)*
+        let time_end = SystemTime::now();
+        ::tracing::debug!(
+            "{} took {}ms", $name,
+            time_end.duration_since(time_start)?.as_millis()
+        );
+    };
+}
+
+async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()> {
+    if let Some(sync_info) = info.are_local_files_newer(b).await? {
+        warn!("found local files newer than local, showing confirmation box to the user...");
+
+        match ui::spawn_sync_confirm(sync_info)? {
+            SyncChoices::Download => {
+                info.download(b, true).await?;
+            }
+            SyncChoices::Continue => {}
+            SyncChoices::Exit => {
+                return Ok(());
+            }
+        }
+    } else {
+        info.download(b, false).await?;
+    }
+    Ok(())
+}
 
 async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
 
+    //std::fs::write("/home/ash/args.txt", format!("{args:?}"));
+    //std::process::exit(1);
     init_file_logging().expect("failed to init file logging");
 
     let secrets = SecretsApi::new().await?;
@@ -248,6 +281,9 @@ async fn run() -> anyhow::Result<()> {
                         .expect("couldn't find steam id");
 
                     let manifest_steam_id = largs.app_id.unwrap_or(app_id);
+                    time! {
+                        "finding the game manifest":
+                        {
                     let (name, game) = manifests
                         .iter()
                         .find(|(_, m)| {
@@ -257,40 +293,31 @@ async fn run() -> anyhow::Result<()> {
                                 .unwrap_or(false)
                         })
                         .expect("couldn't find game in manifest");
+                    }
+                    };
                     debug!("found game manifest for {name}\n{game:#?}");
 
-                    let mut b = cfg
+                    let (bname, mut b) = cfg
                         .backends
                         .iter()
                         .find(|b| b.name == cfg.default_backend)
-                        .map(|b| b.to_backend(name, &secrets))
+                        .map(|b| b.to_backend(name, &secrets).map(|bk| (&b.name, bk)))
                         .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
+
                     if !args.dry_run {
-                        let info = match SyncMgr::from_steam_game(game, app_id) {
+                        let info = match SyncMgr::from_steam_game(game, app_id, bname) {
                             Ok(v) => v,
                             Err(e) => {
                                 error!("failed to get information about game: {e}");
                                 return Err(e);
                             }
                         };
-                        if let Some(sync_info) = info.are_local_files_newer(&b).await? {
-                            warn!(
-                                "found local files newer than local, showing confirmation box to the user..."
-                            );
 
-                            match ui::spawn_sync_confirm(sync_info)? {
-                                SyncChoices::Download => {
-                                    info.download(&b, true).await?;
-                                }
-                                SyncChoices::Continue => {}
-                                SyncChoices::Exit => {
-                                    return Ok(());
-                                }
+                        time! {
+                            "cloud sync": {
+                            cloud_sync_down(&b, info).await?;
                             }
-                        } else {
-                            info.download(&b, false).await?;
                         }
-                        drop(info); // its info is no longer valid after the command runs bc it may create new files
                     } else {
                         info!("not downloading files due to dry-run");
                     }
@@ -307,7 +334,7 @@ async fn run() -> anyhow::Result<()> {
                     c.wait().unwrap();
 
                     if args.dry_run || !largs.no_upload {
-                        let info = match SyncMgr::from_steam_game(game, app_id) {
+                        let info = match SyncMgr::from_steam_game(game, app_id, bname) {
                             Ok(v) => v,
                             Err(e) => {
                                 error!("failed to get information about game: {e}");
