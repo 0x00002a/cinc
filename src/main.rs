@@ -31,7 +31,7 @@ use cinc::{
 };
 use clap::Parser;
 use itertools::Itertools;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 async fn grab_manifest(url: &str) -> Result<String> {
@@ -94,11 +94,19 @@ async fn get_game_manifests(url: &str) -> Result<GameManifests> {
         update_manifest(url).await
     } else {
         info!("reading cached manifest...");
-        bincode::serde::decode_from_std_read(
+        match bincode::serde::decode_from_std_read(
             &mut BufReader::new(File::open(path)?),
             bincode::config::standard(),
-        )
-        .map_err(Into::into)
+        ) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                warn!(
+                    "failed to decode manifest, assuming it is an old version and grabbing from the server again"
+                );
+                std::fs::remove_file(path)?;
+                update_manifest(url).await
+            }
+        }
     }
 }
 
