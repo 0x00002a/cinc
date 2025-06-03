@@ -19,13 +19,8 @@ use itertools::Itertools;
 use tracing::{debug, error, warn};
 
 pub enum PlatformInfo {
-    Steam {
-        app_id: SteamId,
-        manifest_id: SteamId,
-    },
-    Umu {
-        exe_path: PathBuf,
-    },
+    Steam { app_id: SteamId },
+    Umu { exe_path: PathBuf },
 }
 impl PlatformInfo {
     fn find_game_in_manifest<'a>(
@@ -33,19 +28,21 @@ impl PlatformInfo {
         manifests: &'a GameManifests,
     ) -> Option<(&'a str, &'a GameManifest)> {
         match self {
-            PlatformInfo::Steam { manifest_id, .. } => manifests
-                .iter()
-                .find(|(_, m)| {
-                    m.steam
-                        .as_ref()
-                        .map(|i| &i.id == manifest_id)
-                        .unwrap_or(false)
-                })
-                .map(|(s, g)| (s.as_str(), g)),
+            PlatformInfo::Steam { app_id } => find_in_manifest_by_steam_id(manifests, *app_id),
             PlatformInfo::Umu { exe_path } => find_likelist_umu_match(manifests, exe_path),
         }
     }
 }
+fn find_in_manifest_by_steam_id(
+    manifest: &GameManifests,
+    app_id: SteamId,
+) -> Option<(&str, &GameManifest)> {
+    manifest
+        .iter()
+        .find(|(_, m)| m.steam.as_ref().map(|i| i.id == app_id).unwrap_or(false))
+        .map(|(s, g)| (s.as_str(), g))
+}
+
 fn find_likelist_umu_match<'a>(
     manifest: &'a GameManifests,
     exe_path: &Path,
@@ -98,6 +95,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
                 "failed to resolve platform we are running on, try specifying it explicitly with --platform"
             );
         };
+        let manifest_steam_id = largs.app_id;
 
         let platform = match platform {
             PlatformOpt::Steam => {
@@ -114,11 +112,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
                     })
                     .expect("couldn't find steam id");
 
-                let manifest_id = largs.app_id.unwrap_or(app_id);
-                PlatformInfo::Steam {
-                    app_id,
-                    manifest_id,
-                }
+                PlatformInfo::Steam { app_id }
             }
             PlatformOpt::Umu => {
                 let exe_path = command
@@ -134,7 +128,10 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
         time! {
         "finding the game manifest":
         {
-        let (game_name, game) = platform.find_game_in_manifest(manifests).ok_or_else(|| anyhow!("failed to find game in manifest"))?;
+        let (game_name, game) = manifest_steam_id.and_then(|id|{
+            debug!("using supplied steam id to find game in the manifest");
+            find_in_manifest_by_steam_id(manifests, id)
+        }).or_else(||  platform.find_game_in_manifest(manifests)).ok_or_else(|| anyhow!("failed to find game in manifest"))?;
         }}
 
         debug!("found game manifest for {game_name}\n{game:#?}");
