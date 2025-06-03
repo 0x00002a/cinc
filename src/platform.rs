@@ -1,10 +1,13 @@
-use std::time::SystemTime;
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use crate::{
     args::{LaunchArgs, PlatformOpt},
     backends::StorageBackend,
     config::{Config, SteamId},
-    manifest::{GameManifest, GameManifests},
+    manifest::{self, GameManifest, GameManifests, Store},
     secrets::SecretsApi,
     sync::SyncMgr,
     time,
@@ -12,14 +15,17 @@ use crate::{
 };
 use anyhow::Result;
 use anyhow::{anyhow, bail};
-use tracing::{debug, error, info, warn};
+use itertools::Itertools;
+use tracing::{debug, error, warn};
 
 pub enum PlatformInfo {
     Steam {
         app_id: SteamId,
         manifest_id: SteamId,
     },
-    Umu {},
+    Umu {
+        exe_path: PathBuf,
+    },
 }
 impl PlatformInfo {
     fn find_game_in_manifest<'a>(
@@ -36,9 +42,37 @@ impl PlatformInfo {
                         .unwrap_or(false)
                 })
                 .map(|(s, g)| (s.as_str(), g)),
-            PlatformInfo::Umu {} => todo!(),
+            PlatformInfo::Umu { exe_path } => find_likelist_umu_match(manifests, exe_path),
         }
     }
+}
+fn find_likelist_umu_match<'a>(
+    manifest: &'a GameManifests,
+    exe_path: &Path,
+) -> Option<(&'a str, &'a GameManifest)> {
+    let platform = manifest::PlatformInfo {
+        store: Some(Store::Steam),
+        wine: true,
+    };
+    let exe_comps = exe_path.components().rev().collect_vec();
+    let mut max_len = 0;
+    let mut max = None;
+    for (k, m) in manifest {
+        for (p, _) in m.launch.iter().filter(|l| l.1.sat(platform)) {
+            let len = p
+                .as_raw_path()
+                .components()
+                .rev()
+                .zip(exe_comps.iter())
+                .take_while(|(a, b)| a == *b)
+                .count();
+            if max_len < len {
+                max = Some((k.as_str(), m));
+                max_len = len;
+            }
+        }
+    }
+    max
 }
 
 pub struct LaunchInfo<'s, 'm> {
@@ -83,7 +117,13 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
                 }
             }
             PlatformOpt::Umu => {
-                todo!()
+                let exe_path = command
+                    .get(1)
+                    .ok_or_else(|| anyhow!("expected a command to invoke for umu"))?
+                    .to_owned();
+                PlatformInfo::Umu {
+                    exe_path: exe_path.into(),
+                }
             }
             PlatformOpt::Auto => unreachable!(),
         };
@@ -117,7 +157,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
             PlatformInfo::Steam { app_id, .. } => {
                 SyncMgr::from_steam_game(self.game, *app_id, &self.bname)
             }
-            PlatformInfo::Umu {} => todo!(),
+            PlatformInfo::Umu { .. } => SyncMgr::from_umu_env(self.game, &self.bname),
         };
         if let Err(e) = r.as_ref() {
             error!("failed to get information about game: {e}");
@@ -207,6 +247,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                launch: Default::default(),
             },
         );
         let local_path = root.join("store");

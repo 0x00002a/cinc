@@ -18,22 +18,20 @@ use std::{
 };
 use uuid::Uuid;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use chrono::Local;
 use cinc::{
-    args::{CliArgs, LaunchArgs, PlatformOpt},
-    backends::StorageBackend,
-    config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, SteamId, WebDavInfo},
-    manifest::{GameManifests, Store},
+    args::{CliArgs, LaunchArgs},
+    config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, WebDavInfo},
+    manifest::GameManifests,
     paths::{cache_dir, config_dir, log_dir},
     platform::LaunchInfo,
     secrets::SecretsApi,
-    sync::SyncMgr,
-    ui::{self, SyncChoices, SyncIssueInfo},
+    ui::{self, SyncIssueInfo},
 };
 use clap::Parser;
 use itertools::Itertools;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 async fn grab_manifest(url: &str) -> Result<String> {
@@ -188,29 +186,6 @@ macro_rules! print_success {
     ($($arg:tt)*) => {
         println!("{}", format!($($arg)*).green())
     }
-}
-
-async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()> {
-    let Some(metadata) = b.read_sync_time().await? else {
-        debug!("server has no metadata, we don't have to do anything");
-        return Ok(());
-    };
-    if let Some(sync_info) = info.are_local_files_newer(&metadata).await? {
-        warn!("found local files newer than local, showing confirmation box to the user...");
-
-        match ui::spawn_sync_confirm(sync_info)? {
-            SyncChoices::Download => {
-                info.download(b, true, &metadata).await?;
-            }
-            SyncChoices::Continue => {}
-            SyncChoices::Exit => {
-                return Ok(());
-            }
-        }
-    } else {
-        info.download(b, false, &metadata).await?;
-    }
-    Ok(())
 }
 
 async fn run() -> anyhow::Result<()> {

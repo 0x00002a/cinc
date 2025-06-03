@@ -60,7 +60,7 @@ impl<'f> SyncMgr<'f> {
                 .join("pfx")
                 .join("drive_c"),
             win_user: "steamuser".to_owned(),
-            base_dir: steam_app_lib.resolve_app_dir(&steam_app_manifest),
+            base_dir: Some(steam_app_lib.resolve_app_dir(&steam_app_manifest)),
             steam_root: Some(steam_app_lib.path().to_owned()),
             store_user_id: store_user_id.clone(),
 
@@ -73,7 +73,7 @@ impl<'f> SyncMgr<'f> {
         let remote_info = TemplateInfo {
             win_prefix: PathBuf::from("win_prefix"),
             win_user: "steamuser".to_owned(),
-            base_dir: "base_dir".into(),
+            base_dir: Some("base_dir".into()),
             steam_root: Some("steam_root".into()),
             store_user_id,
 
@@ -81,6 +81,49 @@ impl<'f> SyncMgr<'f> {
             xdg_config: Some("xdg_config".into()),
             xdg_data: Some("xdg_data".into()),
         };
+        Self::from_manifest(manifest, local_info, &remote_info, remote_name)
+    }
+    pub fn from_umu_env(manifest: &'f GameManifest, remote_name: &'f str) -> Result<Self> {
+        let wine_prefix = std::env::var("WINEPREFIX").unwrap_or_else(|_| {
+            todo!("we need to fallback to the umu id here https://umu.openwinecomponents.org/");
+        });
+        let wine_prefix = Path::new(&wine_prefix);
+        // we need to work out the base dir using a little magic
+
+        // local template subst
+        let local_info = TemplateInfo {
+            win_prefix: wine_prefix.join("pfx").join("drive_c"),
+            win_user: "steamuser".to_owned(),
+            base_dir: None,
+            steam_root: None,
+            store_user_id: None,
+
+            home_dir: None,
+            xdg_config: None,
+            xdg_data: None,
+        };
+
+        // remote template substs
+        let remote_info = TemplateInfo {
+            win_prefix: PathBuf::from("win_prefix"),
+            win_user: "steamuser".to_owned(),
+            base_dir: Some("base_dir".into()),
+            steam_root: Some("steam_root".into()),
+            store_user_id: None,
+
+            home_dir: Some("home_dir".into()),
+            xdg_config: Some("xdg_config".into()),
+            xdg_data: Some("xdg_data".into()),
+        };
+        Self::from_manifest(manifest, local_info, &remote_info, remote_name)
+    }
+
+    fn from_manifest(
+        manifest: &'f GameManifest,
+        local_info: TemplateInfo,
+        remote_info: &TemplateInfo,
+        remote_name: &'f str,
+    ) -> Result<Self> {
         let mut files = Vec::new();
         for (filename, cfg) in &manifest.files {
             if !cfg.preds.iter().all(|p| {
@@ -97,7 +140,7 @@ impl<'f> SyncMgr<'f> {
                 debug!("skipping {} as it is not a savegame file", fname);
                 continue;
             }
-            let remote_name = filename.apply_substs(&remote_info)?;
+            let remote_name = filename.apply_substs(remote_info)?;
             let info = FileInfo {
                 local_path: fname.into(),
                 remote_path: remote_name.into(),
@@ -136,7 +179,7 @@ impl<'f> SyncMgr<'f> {
             }
         }
 
-        Ok(SyncMgr {
+        Ok(Self {
             files,
             local_info,
             remote_name,

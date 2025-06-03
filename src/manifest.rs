@@ -14,6 +14,8 @@ pub struct GameManifest {
     pub steam: Option<SteamInfo>,
     #[serde(default)]
     pub files: HashMap<TemplatePath, FileConfig>,
+    #[serde(default)]
+    pub launch: HashMap<TemplatePath, LaunchConfig>,
 }
 
 /// Path which may contain substitutions such as <base> or <winLocalAppData>
@@ -147,7 +149,7 @@ pub enum TemplateError {
 pub struct TemplateInfo {
     pub win_prefix: PathBuf,
     pub win_user: String,
-    pub base_dir: PathBuf,
+    pub base_dir: Option<PathBuf>,
     pub steam_root: Option<PathBuf>,
     pub store_user_id: Option<String>,
     pub home_dir: Option<PathBuf>,
@@ -209,7 +211,11 @@ impl TemplatePath {
                     .join("users")
                     .join(&info.win_user)
                     .join("Documents"),
-                "base" => info.base_dir.clone(),
+                "base" => info
+                    .base_dir
+                    .as_ref()
+                    .ok_or(TemplateError::VariableNotAvailable("base dir"))?
+                    .clone(),
                 "root" => info
                     .steam_root
                     .to_owned()
@@ -255,7 +261,7 @@ mod tests {
             .apply_substs(&TemplateInfo {
                 win_prefix: "".into(),
                 win_user: "".to_owned(),
-                base_dir: "".into(),
+                base_dir: None,
                 steam_root: Some(PathBuf::from(root)),
                 store_user_id: Some(user_id.to_owned()),
                 home_dir: None,

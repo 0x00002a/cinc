@@ -2,10 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValue};
 
-use crate::{
-    config::{BackendType, SteamId},
-    manifest::Store,
-};
+use crate::config::{BackendType, SteamId};
 
 #[derive(Parser, Debug)]
 pub struct CliArgs {
