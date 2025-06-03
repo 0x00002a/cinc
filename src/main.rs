@@ -305,7 +305,7 @@ async fn run() -> anyhow::Result<()> {
                         } else {
                             let use_secrets = secrets.available()
                                 && user_input_yesno(
-                                    "use system secrets API to store this password? (recommended) [Y/n]",
+                                    "use system secrets API to store this password? (recommended) [Y/n]: ",
                                     true,
                                 )?;
                             Some(if use_secrets {

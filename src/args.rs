@@ -1,10 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValue};
+use clap::{
+    Args, Parser, Subcommand, ValueEnum,
+    builder::{PossibleValue, Styles, styling::AnsiColor},
+};
 
 use crate::config::{BackendType, SteamId};
 
 #[derive(Parser, Debug)]
+#[clap(styles = style())]
 pub struct CliArgs {
     /// Update the manifest
     ///
@@ -195,4 +199,12 @@ impl ValueEnum for BackendType {
             BackendType::WebDav => Some(PossibleValue::new("webdav").help("webdav backend")),
         }
     }
+}
+
+fn style() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::BrightGreen.on_default())
+        .usage(AnsiColor::BrightMagenta.on_default())
+        .literal(AnsiColor::BrightBlue.on_default())
+        .placeholder(AnsiColor::BrightCyan.on_default())
 }
