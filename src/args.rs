@@ -138,9 +138,9 @@ pub struct LaunchArgs {
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ValueEnum)]
 /// Force specific platform support, usually unnecessary as autodetect should find it
 pub enum PlatformOpt {
-    /// Force steam support
+    /// Force steam mode
     Steam,
-    /// Force
+    /// Force umu mode
     Umu,
     #[default]
     /// Attempt to autodetect launcher platform

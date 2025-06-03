@@ -28,18 +28,15 @@ cinc backends add \
     --root=/cinc \
     --webdav-url=<url> \
     --webdav-username=<username> \
-    --webdav-psk=<psk> \
     --set-default
 ```
 
-The `--webdav-psk` and `--root` arguments are optional, but the psk required if
-your webdav server needs authentication and the root is recommended unless you
-include it in the url or are okay with cinc using the root of the WebDav
-server. The rest of the arguments are required, you can learn more about what
-they do with `cinc backends --help`.
+The `--root` argument is optional, but is recommended unless you include it in
+the url or are okay with cinc using the root of the WebDav server. You can
+learn more about what each of these arguments does with `cinc backends --help`.
 
-Once you have configured a backend you can move on to actually using cinc,
-currently the only supported platform is steam.
+Once you have configured a backend you can move on to actually using cinc on your platform
+of choice. Currently it supports steam and anything that uses umu.
 
 ### Steam
 
@@ -70,6 +67,13 @@ it as a non-steam game through steam you would use the following command:
 ```bash
 cinc launch --steam-app-id=1903340 -- %command%
 ```
+
+### Heroic
+
+To use cinc with the heroic launcher you must specify it as a wrapper in the
+advanced options for the game. Set the wrapper path to the absolute path to the
+binary (likely `/home/<name>/.local/share/cargo/bin/cinc`) and the arguments to
+`launch`.
 
 ## Supported operating systems
 
