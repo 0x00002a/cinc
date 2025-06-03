@@ -115,9 +115,6 @@ pub enum BackendsArgs {
 
 #[derive(Args, Clone, Debug)]
 pub struct LaunchArgs {
-    #[arg(long = "save-dir", help = "Path of save files directory to sync")]
-    pub save_dir: Vec<PathBuf>,
-
     #[arg(
         long = "platform",
         short = 'p',

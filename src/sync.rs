@@ -18,7 +18,7 @@ use crate::{
     ui::{SyncChoices, SyncIssueInfo},
 };
 
-const ARCHIVE_NAME: &str = "archive.tar.xz";
+pub const ARCHIVE_NAME: &str = "archive.tar.xz";
 const XZ_LEVEL: u32 = 5;
 
 #[derive(Clone, Debug)]

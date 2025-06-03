@@ -53,6 +53,11 @@ impl<'s> SecretsApi<'s> {
         let _ = i.as_ref().unwrap().collection().await;
         Ok(Self { i })
     }
+
+    #[cfg(test)]
+    pub fn new_unavailable() -> Self {
+        Self { i: None }
+    }
     /// Whether the secrets API is available on this system
     pub fn available(&self) -> bool {
         self.i.is_some()

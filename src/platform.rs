@@ -173,8 +173,74 @@ async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn local_fs_sync() {
-        //let dir = testdir::testdir!();
+    use std::collections::HashMap;
+
+    use crate::{
+        args::{LaunchArgs, PlatformOpt},
+        config::{BackendInfo, BackendTy, Config, SteamId},
+        manifest::{FileConfig, FileTag, GameManifest, SteamInfo, TemplatePath},
+        secrets::SecretsApi,
+        sync::ARCHIVE_NAME,
+    };
+
+    use super::LaunchInfo;
+
+    #[pollster::test]
+    async fn local_fs_sync() {
+        let root = testdir::testdir!();
+        let contents = "hello-world";
+        let file_path = root.join("file");
+        std::fs::write(&file_path, contents).unwrap();
+
+        let steam_id = SteamId::new(0);
+        let mut manifest = HashMap::new();
+        manifest.insert(
+            "test".to_owned(),
+            GameManifest {
+                steam: Some(SteamInfo { id: steam_id }),
+                files: [(
+                    TemplatePath::new(file_path.to_str().unwrap()),
+                    FileConfig {
+                        preds: vec![],
+                        tags: vec![FileTag::Save],
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+        );
+        let local_path = root.join("store");
+        let cfg = Config {
+            default_backend: "t".to_owned(),
+            manifest_url: None,
+            backends: vec![BackendInfo {
+                name: "t".to_owned(),
+                info: BackendTy::Filesystem {
+                    root: local_path.clone(),
+                },
+            }],
+        };
+        let secrets = SecretsApi::new_unavailable();
+        let launch = LaunchInfo::new(
+            &cfg,
+            &manifest,
+            &secrets,
+            &LaunchArgs {
+                platform: PlatformOpt::Steam,
+                no_upload: false,
+                app_id: None,
+                command: vec![format!("AppId={steam_id}")],
+            },
+        )
+        .unwrap();
+        let archive_p = local_path.join(ARCHIVE_NAME);
+
+        launch.sync_down().await.unwrap();
+        assert!(!std::fs::exists(&archive_p).unwrap());
+        launch.sync_up().await.unwrap();
+        assert!(std::fs::exists(&archive_p).unwrap());
+        std::fs::remove_file(&file_path).unwrap();
+        launch.sync_down().await.unwrap();
+        assert!(std::fs::exists(&file_path).unwrap());
     }
 }

@@ -156,8 +156,8 @@ pub struct TemplateInfo {
 }
 
 impl TemplatePath {
-    pub fn new(s: String) -> Self {
-        Self(s)
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
     }
     /// Get the raw path, note that is this almost certainly not a valid
     /// filesystem path and using it without applying substitutions WILL cause issues
