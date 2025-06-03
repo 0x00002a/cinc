@@ -9,3 +9,4 @@
 - Add config validation
 - Fix downloading files from cloud when unneeded (on every launch)
 - Fix syncing of config files
+- Support for umu games and thus non-steam launchers (e.g. heroic)

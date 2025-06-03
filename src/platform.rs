@@ -217,33 +217,40 @@ async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, env, path::Path};
 
     use crate::{
         args::{LaunchArgs, PlatformOpt},
-        config::{BackendInfo, BackendTy, Config, SteamId},
-        manifest::{FileConfig, FileTag, GameManifest, SteamInfo, TemplatePath},
+        config::{BackendInfo, BackendTy, Config},
+        manifest::{FileConfig, FileTag, GameManifest, TemplatePath},
+        paths::PathExt,
         secrets::SecretsApi,
         sync::ARCHIVE_NAME,
     };
+    use test_log::test;
 
     use super::LaunchInfo;
 
-    #[pollster::test]
+    #[test(tokio::test)]
     async fn local_fs_sync() {
         let root = testdir::testdir!();
         let contents = "hello-world";
         let file_path = root.join("file");
         std::fs::write(&file_path, contents).unwrap();
+        let launch_exe = "run.exe";
+        let wine_prefix = root.join("wineprefix");
+        std::fs::create_dir_all(&wine_prefix).unwrap();
+        unsafe {
+            env::set_var("WINEPREFIX", wine_prefix.to_str().unwrap());
+        }
 
-        let steam_id = SteamId::new(0);
         let mut manifest = HashMap::new();
         manifest.insert(
             "test".to_owned(),
             GameManifest {
-                steam: Some(SteamInfo { id: steam_id }),
+                steam: None,
                 files: [(
-                    TemplatePath::new(file_path.to_str().unwrap()),
+                    TemplatePath::new(Path::new("<home>").join_good(&file_path).to_str().unwrap()),
                     FileConfig {
                         preds: vec![],
                         tags: vec![FileTag::Save],
@@ -251,7 +258,9 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                launch: Default::default(),
+                launch: [(TemplatePath::new(launch_exe), vec![])]
+                    .into_iter()
+                    .collect(),
             },
         );
         let local_path = root.join("store");
@@ -271,21 +280,37 @@ mod tests {
             &manifest,
             &secrets,
             &LaunchArgs {
-                platform: PlatformOpt::Steam,
+                platform: PlatformOpt::Auto,
                 no_upload: false,
                 app_id: None,
-                command: vec![format!("AppId={steam_id}")],
+                command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
             },
         )
         .unwrap();
-        let archive_p = local_path.join(ARCHIVE_NAME);
+        let archive_p = local_path.join("test").join(ARCHIVE_NAME);
 
         launch.sync_down().await.unwrap();
         assert!(!std::fs::exists(&archive_p).unwrap());
         launch.sync_up().await.unwrap();
-        assert!(std::fs::exists(&archive_p).unwrap());
+        assert!(
+            std::fs::exists(&archive_p).unwrap(),
+            "didn't write archive to {archive_p:?}"
+        );
         std::fs::remove_file(&file_path).unwrap();
         launch.sync_down().await.unwrap();
-        assert!(std::fs::exists(&file_path).unwrap());
+        assert!(
+            !std::fs::exists(&file_path).unwrap(),
+            "sync downloaded even though it didn't have to"
+        );
+
+        let info = launch.mk_sync_mgr().unwrap();
+        let metadata = launch.b.read_sync_time().await.unwrap().unwrap();
+        assert!(
+            info.are_local_files_newer(&metadata)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        info.download(&launch.b, false, &metadata).await.unwrap();
     }
 }

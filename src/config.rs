@@ -294,7 +294,7 @@ name = "cloud"
 type = "web_dav"
 url = "https://webdav.example.com/files/"
 username = "example@example.com"
-psk = "bingle" # should parse as plain
+psk = { ty = "plain", value = "bingle" } # should parse as plain
 root = "/cinc"
 
         "#;

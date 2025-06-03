@@ -42,10 +42,8 @@ dir_override!(cache : cache_dir);
 /// Extract the postfix of two paths
 ///
 /// # Panics
-/// If base is not a directory
 /// If base is not a prefix of child
 pub fn extract_postfix<'p>(base: &'p Path, child: &'p Path) -> &'p Path {
-    assert!(base.is_dir());
     assert!(
         base.components()
             .zip(child.components())
