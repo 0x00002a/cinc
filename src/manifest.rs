@@ -15,7 +15,7 @@ pub struct GameManifest {
     #[serde(default)]
     pub files: HashMap<TemplatePath, FileConfig>,
     #[serde(default)]
-    pub launch: HashMap<TemplatePath, LaunchConfig>,
+    pub launch: HashMap<TemplatePath, Vec<LaunchConfig>>,
 }
 
 /// Path which may contain substitutions such as <base> or <winLocalAppData>

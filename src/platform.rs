@@ -7,7 +7,7 @@ use crate::{
     args::{LaunchArgs, PlatformOpt},
     backends::StorageBackend,
     config::{Config, SteamId},
-    manifest::{self, GameManifest, GameManifests, Store},
+    manifest::{self, GameManifest, GameManifests},
     secrets::SecretsApi,
     sync::SyncMgr,
     time,
@@ -51,14 +51,18 @@ fn find_likelist_umu_match<'a>(
     exe_path: &Path,
 ) -> Option<(&'a str, &'a GameManifest)> {
     let platform = manifest::PlatformInfo {
-        store: Some(Store::Steam),
+        store: None,
         wine: true,
     };
     let exe_comps = exe_path.components().rev().collect_vec();
     let mut max_len = 0;
     let mut max = None;
     for (k, m) in manifest {
-        for (p, _) in m.launch.iter().filter(|l| l.1.sat(platform)) {
+        for (p, _) in m
+            .launch
+            .iter()
+            .filter(|l| l.1.iter().all(|p| p.sat(platform)))
+        {
             let len = p
                 .as_raw_path()
                 .components()
