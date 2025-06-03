@@ -93,6 +93,10 @@ impl<'f> SyncMgr<'f> {
                 continue;
             }
             let fname = filename.apply_substs(&local_info)?;
+            if !cfg.tags.contains(&FileTag::Save) {
+                debug!("skipping {} as it is not a savegame file", fname);
+                continue;
+            }
             let remote_name = filename.apply_substs(&remote_info)?;
             let info = FileInfo {
                 local_path: fname.into(),

@@ -8,3 +8,4 @@
 - Fix manifest url config option being ignored
 - Add config validation
 - Fix downloading files from cloud when unneeded (on every launch)
+- Fix syncing of config files

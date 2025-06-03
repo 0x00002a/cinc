@@ -24,7 +24,7 @@ use cinc::{
     args::{CliArgs, LaunchArgs},
     backends::StorageBackend,
     config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, SteamId, WebDavInfo},
-    manifest::{GameManifest, GameManifests, Store},
+    manifest::{GameManifests, Store},
     paths::{cache_dir, config_dir, log_dir},
     secrets::SecretsApi,
     sync::SyncMgr,
