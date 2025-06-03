@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValue};
 
@@ -141,41 +141,38 @@ pub struct LaunchArgs {
     pub command: Vec<String>,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ValueEnum)]
+/// Force specific platform support, usually unnecessary as autodetect should find it
 pub enum PlatformOpt {
+    /// Force steam support
     Steam,
+    /// Force
+    Umu,
     #[default]
+    /// Attempt to autodetect launcher platform
     Auto,
 }
-impl ValueEnum for PlatformOpt {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Auto, Self::Steam]
-    }
-
-    fn to_possible_value(&self) -> Option<PossibleValue> {
-        match self {
-            PlatformOpt::Steam => Some(
-                PossibleValue::new("steam")
-                    .help("force steam support, usually unnecessary as autodetect should find it"),
-            ),
-            PlatformOpt::Auto => {
-                Some(PossibleValue::new("auto").help("attempt to autodetect launcher platform"))
-            }
-        }
-    }
-}
+const UMU_EXE_NAME: &str = "umu-run";
 
 impl LaunchArgs {
-    pub fn resolve_platform(&self) -> Option<Store> {
+    /// Resolve the platform to one which is not auto
+    pub fn resolve_platform(&self) -> Option<PlatformOpt> {
         match self.platform {
-            PlatformOpt::Steam => Some(Store::Steam),
             PlatformOpt::Auto => {
                 if self.command.iter().any(|s| s.starts_with("AppId=")) {
-                    Some(Store::Steam)
+                    Some(PlatformOpt::Steam)
+                } else if self
+                    .command
+                    .first()
+                    .map(|c| Path::new(c).file_name() == Some(std::ffi::OsStr::new(UMU_EXE_NAME)))
+                    .unwrap_or(false)
+                {
+                    Some(PlatformOpt::Umu)
                 } else {
                     None
                 }
             }
+            v => Some(v),
         }
     }
 }

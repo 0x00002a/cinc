@@ -25,7 +25,7 @@ impl FilesystemStore {
 }
 
 impl FilesystemStore {
-    pub async fn write_file(&mut self, at: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    pub async fn write_file(&self, at: &std::path::Path, bytes: &[u8]) -> Result<()> {
         let p = self.filename(at);
         debug!("writing to {p:?}");
         assert!(!p.is_dir());

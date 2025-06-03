@@ -118,7 +118,7 @@ impl<'s> WebDavStore<'s> {
 }
 
 impl WebDavStore<'_> {
-    pub async fn write_file(&mut self, at: &Path, bytes: &[u8]) -> super::Result<()> {
+    pub async fn write_file(&self, at: &Path, bytes: &[u8]) -> super::Result<()> {
         debug!("writing to {at:?}");
         if !self
             .exists(at.parent().expect("no parent path for file"))

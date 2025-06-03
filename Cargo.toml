@@ -44,3 +44,6 @@ typesum = "0.2.0"
 uuid = { version = "1.17.0", features = ["v4"] }
 walkdir = "2.5.0"
 xz2 = "0.1.7"
+
+[dev-dependencies]
+testdir = "0.9.3"

@@ -125,7 +125,7 @@ impl<'s> StorageBackend<'s> {
             backend: backend.into(),
         }
     }
-    forward!(fn mut write_file(at: &Path, bytes: &[u8]) -> ());
+    forward!(fn write_file(at: &Path, bytes: &[u8]) -> ());
     forward!(fn read_file(at: &Path) -> Vec<u8>);
     forward!(fn exists(at: &Path) -> bool);
 
@@ -141,7 +141,7 @@ impl<'s> StorageBackend<'s> {
         Ok(Some(ron::de::from_bytes(&f)?))
     }
 
-    pub async fn write_sync_time(&mut self, metadata: &SyncMetadata) -> Result<()> {
+    pub async fn write_sync_time(&self, metadata: &SyncMetadata) -> Result<()> {
         let data = ron::ser::to_string(metadata)?;
         self.write_file(Path::new(SYNC_TIME_FILE), data.as_bytes())
             .await

@@ -216,7 +216,7 @@ impl<'f> SyncMgr<'f> {
 
         Ok(None)
     }
-    pub async fn upload(&self, backend: &mut StorageBackend<'_>) -> Result<()> {
+    pub async fn upload(&self, backend: &StorageBackend<'_>) -> Result<()> {
         info!("uploading files to cloud...");
 
         let latest_write = SyncMetadata::from_sys_info(self.build_file_table()?);

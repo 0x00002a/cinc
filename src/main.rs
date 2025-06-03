@@ -21,11 +21,12 @@ use uuid::Uuid;
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Local;
 use cinc::{
-    args::{CliArgs, LaunchArgs},
+    args::{CliArgs, LaunchArgs, PlatformOpt},
     backends::StorageBackend,
     config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, SteamId, WebDavInfo},
     manifest::{GameManifests, Store},
     paths::{cache_dir, config_dir, log_dir},
+    platform::LaunchInfo,
     secrets::SecretsApi,
     sync::SyncMgr,
     ui::{self, SyncChoices, SyncIssueInfo},
@@ -188,17 +189,6 @@ macro_rules! print_success {
         println!("{}", format!($($arg)*).green())
     }
 }
-macro_rules! time {
-    ($name:literal : { $($code:tt)* }) => {
-        let time_start = SystemTime::now();
-        $($code)*
-        let time_end = SystemTime::now();
-        ::tracing::debug!(
-            "{} took {}ms", $name,
-            time_end.duration_since(time_start)?.as_millis()
-        );
-    };
-}
 
 async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()> {
     let Some(metadata) = b.read_sync_time().await? else {
@@ -264,95 +254,30 @@ async fn run() -> anyhow::Result<()> {
                 "parsing the manifest took {}ms",
                 manifest_end.duration_since(manifest_start)?.as_millis()
             );
-            let Some(platform) = largs.resolve_platform() else {
-                bail!(
-                    "failed to resolve platform we are running on, try specifying it explicitly with --platform"
-                );
-            };
-            match platform {
-                Store::Steam => {
-                    let app_id = command
-                        .iter()
-                        .find(|e| e.starts_with("AppId="))
-                        .map(|s| {
-                            s.split_once("=")
-                                .expect("invalid AppId field, has the steam arg format changed?")
-                                .1
-                                .parse::<u32>()
-                                .map(SteamId::new)
-                                .expect("failed to parse app id")
-                        })
-                        .expect("couldn't find steam id");
+            let platform = LaunchInfo::new(&cfg, &manifests, &secrets, largs)?;
 
-                    let manifest_steam_id = largs.app_id.unwrap_or(app_id);
-                    time! {
-                        "finding the game manifest":
-                        {
-                    let (name, game) = manifests
-                        .iter()
-                        .find(|(_, m)| {
-                            m.steam
-                                .as_ref()
-                                .map(|i| i.id == manifest_steam_id)
-                                .unwrap_or(false)
-                        })
-                        .expect("couldn't find game in manifest");
-                    }
-                    };
-                    debug!("found game manifest for {name}\n{game:#?}");
+            if !args.dry_run {
+                platform.sync_down().await?;
+            } else {
+                info!("not downloading files due to dry-run");
+            }
 
-                    let (bname, mut b) = cfg
-                        .backends
-                        .iter()
-                        .find(|b| b.name == cfg.default_backend)
-                        .map(|b| b.to_backend(name, &secrets).map(|bk| (&b.name, bk)))
-                        .ok_or_else(|| anyhow!("no backends or default backend is invalid"))??;
+            let launch_time = SystemTime::now();
+            debug!(
+                "we had an overhead of {}ms",
+                launch_time.duration_since(start_time)?.as_millis()
+            );
 
-                    if !args.dry_run {
-                        let info = match SyncMgr::from_steam_game(game, app_id, bname) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                error!("failed to get information about game: {e}");
-                                return Err(e);
-                            }
-                        };
+            let mut c = std::process::Command::new(&command[0])
+                .args(command.iter().skip(1))
+                .spawn()
+                .unwrap();
+            c.wait().unwrap();
 
-                        time! {
-                            "cloud sync": {
-                            cloud_sync_down(&b, info).await?;
-                            }
-                        }
-                    } else {
-                        info!("not downloading files due to dry-run");
-                    }
-
-                    let launch_time = SystemTime::now();
-                    debug!(
-                        "we had an overhead of {}ms",
-                        launch_time.duration_since(start_time)?.as_millis()
-                    );
-                    let mut c = std::process::Command::new(&command[0])
-                        .args(command.iter().skip(1))
-                        .spawn()
-                        .unwrap();
-                    c.wait().unwrap();
-
-                    if args.dry_run || !largs.no_upload {
-                        let info = match SyncMgr::from_steam_game(game, app_id, bname) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                error!("failed to get information about game: {e}");
-                                return Err(e);
-                            }
-                        };
-                        info.upload(&mut b).await?;
-                    } else {
-                        debug!("not uploading due to --debug-no-upload or dry-run flag");
-                    }
-                }
-                Store::Gog => todo!(),
-                Store::Epic => todo!(),
-                Store::Other => todo!(),
+            if args.dry_run || !largs.no_upload {
+                platform.sync_up().await?;
+            } else {
+                debug!("not uploading due to --debug-no-upload or dry-run flag");
             }
         }
         cinc::args::Operation::DebugSyncDialog {
