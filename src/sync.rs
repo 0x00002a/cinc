@@ -13,7 +13,7 @@ use xz2::bufread::{XzDecoder, XzEncoder};
 use crate::{
     backends::{FileMetaEntry, FileMetaTable, StorageBackend, SyncMetadata},
     config::{SteamId, SteamId64},
-    manifest::{FileTag, GameManifest, PlatformInfo, Store, TemplateInfo, TemplatePath},
+    manifest::{FileTag, GameManifest, PlatformInfo, TemplateInfo, TemplatePath},
     paths::{PathExt, extract_postfix, steam_dir},
     ui::{SyncChoices, SyncIssueInfo},
 };
@@ -98,7 +98,13 @@ impl<'f> SyncMgr<'f> {
             steam_root: None,
             store_user_id: None,
 
-            home_dir: None,
+            home_dir: Some(
+                wine_prefix
+                    .join("pfx")
+                    .join("drive_c")
+                    .join("users")
+                    .join("steamuser"),
+            ),
             xdg_config: None,
             xdg_data: None,
         };
@@ -128,7 +134,7 @@ impl<'f> SyncMgr<'f> {
         for (filename, cfg) in &manifest.files {
             if !cfg.preds.iter().all(|p| {
                 p.sat(PlatformInfo {
-                    store: Some(Store::Steam),
+                    store: None,
                     wine: true, // assume wine true and filter out when it's not later
                 })
             }) {
