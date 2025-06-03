@@ -5,14 +5,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 use xz2::bufread::{XzDecoder, XzEncoder};
 
 use crate::{
-    backends::{ModifiedMetadata, StorageBackend},
+    backends::{FileMetaEntry, FileMetaTable, StorageBackend, SyncMetadata},
     config::{SteamId, SteamId64},
     manifest::{FileTag, GameManifest, PlatformInfo, Store, TemplateInfo, TemplatePath},
     paths::{PathExt, extract_postfix, steam_dir},
@@ -22,16 +22,6 @@ use crate::{
 const ARCHIVE_NAME: &str = "archive.tar.xz";
 const XZ_LEVEL: u32 = 5;
 const METADATA_NAME: &str = "file-meta.json";
-
-#[derive(Serialize, Deserialize, Debug)]
-struct FileMetaEntry {
-    template: TemplatePath,
-    remote_path: PathBuf,
-}
-#[derive(Serialize, Deserialize, Debug)]
-struct FileMetaTable {
-    entries: Vec<FileMetaEntry>,
-}
 
 #[derive(Clone, Debug)]
 pub struct FileInfo<'f> {
@@ -165,20 +155,34 @@ impl<'f> SyncMgr<'f> {
         Ok(self.get_modified_times()?.into_iter().max())
     }
 
+    pub async fn rhaid_lawrlwytho(&self, metadata: &SyncMetadata) -> Result<bool> {
+        for file in metadata.file_table.localise_entries(&self.local_info) {
+            let file = file?;
+            if let Some(f) = self.files.iter().find(|f| f.local_path == file) {
+                let mod_time = std::fs::metadata(&f.local_path)?.modified()?;
+                let mod_time = DateTime::<Utc>::from(mod_time);
+                if mod_time < metadata.file_table.oldest_modified_time {
+                    return Ok(true);
+                }
+            } else {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     pub async fn are_local_files_newer(
         &self,
-        backend: &StorageBackend<'_>,
+        cloud_time: &SyncMetadata,
     ) -> Result<Option<SyncIssueInfo>> {
-        if let Some(cloud_time) = backend.read_sync_time().await? {
-            if let Some(newest_local) = self.get_latest_modified_time()? {
-                if newest_local > cloud_time.last_write_timestamp {
-                    return Ok(Some(SyncIssueInfo {
-                        local_time: newest_local,
-                        remote_time: cloud_time.last_write_timestamp,
-                        remote_name: self.remote_name.to_owned(),
-                        remote_last_writer: cloud_time.last_write_hostname,
-                    }));
-                }
+        if let Some(newest_local) = self.get_latest_modified_time()? {
+            if newest_local > cloud_time.last_write_timestamp {
+                return Ok(Some(SyncIssueInfo {
+                    local_time: newest_local,
+                    remote_time: cloud_time.last_write_timestamp,
+                    remote_name: self.remote_name.to_owned(),
+                    remote_last_writer: cloud_time.last_write_hostname.clone(),
+                }));
             }
         }
         Ok(None)
@@ -188,10 +192,15 @@ impl<'f> SyncMgr<'f> {
         &self,
         backend: &StorageBackend<'_>,
         force_overwrite: bool,
+        metadata: &SyncMetadata,
     ) -> Result<Option<SyncChoices>> {
         info!("downloading files from cloud...");
         // check that we are not overwriting anything
-        debug_assert!(force_overwrite || self.are_local_files_newer(backend).await?.is_none());
+        debug_assert!(force_overwrite || self.are_local_files_newer(metadata).await?.is_none());
+        if !self.rhaid_lawrlwytho(metadata).await? {
+            debug!("no need to download anything");
+            return Ok(None);
+        }
 
         let ap = Path::new(ARCHIVE_NAME);
         if !backend.exists(ap).await? {
@@ -201,14 +210,14 @@ impl<'f> SyncMgr<'f> {
 
         let archive = backend.read_file(ap).await?;
         let uncomp = self.decompress_files(&archive)?;
-        self.untar_files(&uncomp)?;
+        self.untar_files(&uncomp, &metadata.file_table)?;
 
         Ok(None)
     }
     pub async fn upload(&self, backend: &mut StorageBackend<'_>) -> Result<()> {
         info!("uploading files to cloud...");
 
-        let latest_write = ModifiedMetadata::from_sys_info();
+        let latest_write = SyncMetadata::from_sys_info(self.build_file_table()?);
         // need to do this before any of the others
         backend.write_sync_time(&latest_write).await?;
 
@@ -221,19 +230,9 @@ impl<'f> SyncMgr<'f> {
         Ok(())
     }
 
-    fn untar_files(&self, from: &[u8]) -> Result<()> {
+    fn untar_files(&self, from: &[u8], metadata: &FileMetaTable) -> Result<()> {
         let mut archive = tar::Archive::new(from);
-        let mut entries = archive.entries()?;
-        let mut metadata_ent = entries
-            .next()
-            .ok_or_else(|| anyhow!("invalid archive, no entries"))??;
-        if metadata_ent.path()? != Path::new(METADATA_NAME) {
-            bail!("invalid archive, first entry should be metadata");
-        }
-        let mut content = Vec::new();
-        metadata_ent.read_to_end(&mut content)?;
-        let metadata: FileMetaTable =
-            serde_json::from_slice(&content).context("while deserialising archive metadata")?;
+        let entries = archive.entries()?;
 
         for ent in entries {
             let mut ent = ent?;
@@ -269,26 +268,32 @@ impl<'f> SyncMgr<'f> {
         encoder.read_to_end(&mut out)?;
         Ok(out)
     }
+    fn build_file_table(&self) -> Result<FileMetaTable> {
+        let mut entries = Vec::new();
+        let mut oldest_modified_time = Local::now().to_utc();
+        for file in self
+            .files
+            .iter()
+            .filter(|e| std::fs::exists(&e.local_path).unwrap())
+        {
+            entries.push(FileMetaEntry {
+                template: file.template.to_owned(),
+                remote_path: file.remote_path.clone(),
+            });
+            let mod_time = DateTime::<Utc>::from(fs::metadata(&file.local_path)?.modified()?);
+            if mod_time < oldest_modified_time {
+                oldest_modified_time = mod_time;
+            }
+        }
+
+        Ok(FileMetaTable {
+            entries,
+            oldest_modified_time,
+        })
+    }
 
     fn tar_files(&self) -> Result<Vec<u8>> {
         let mut b = tar::Builder::new(Vec::new());
-
-        let metadata = FileMetaTable {
-            entries: self
-                .files
-                .iter()
-                .filter(|e| std::fs::exists(&e.local_path).unwrap())
-                .map(|e| FileMetaEntry {
-                    template: e.template.to_owned(),
-                    remote_path: e.remote_path.clone(),
-                })
-                .collect(),
-        };
-        debug!("adding metadata to archive...");
-        let metadata = serde_json::to_vec(&metadata)?;
-        let mut h = tar::Header::new_gnu();
-        h.set_size(metadata.len() as u64);
-        b.append_data(&mut h, METADATA_NAME, metadata.as_slice())?;
 
         for FileInfo {
             local_path,

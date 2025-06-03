@@ -201,12 +201,16 @@ macro_rules! time {
 }
 
 async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()> {
-    if let Some(sync_info) = info.are_local_files_newer(b).await? {
+    let Some(metadata) = b.read_sync_time().await? else {
+        debug!("server has no metadata, we don't have to do anything");
+        return Ok(());
+    };
+    if let Some(sync_info) = info.are_local_files_newer(&metadata).await? {
         warn!("found local files newer than local, showing confirmation box to the user...");
 
         match ui::spawn_sync_confirm(sync_info)? {
             SyncChoices::Download => {
-                info.download(b, true).await?;
+                info.download(b, true, &metadata).await?;
             }
             SyncChoices::Continue => {}
             SyncChoices::Exit => {
@@ -214,7 +218,7 @@ async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()
             }
         }
     } else {
-        info.download(b, false).await?;
+        info.download(b, false, &metadata).await?;
     }
     Ok(())
 }

@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use filesystem::FilesystemStore;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -9,6 +9,7 @@ use webdav::WebDavStore;
 
 use crate::{
     config::{BackendInfo, BackendTy, WebDavInfo},
+    manifest::{TemplateError, TemplateInfo, TemplatePath},
     secrets::SecretsApi,
 };
 
@@ -44,13 +45,36 @@ type Result<T, E = BackendError> = std::result::Result<T, E>;
 pub const SYNC_TIME_FILE: &str = "mod-meta.json";
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct ModifiedMetadata {
+pub struct SyncMetadata {
     pub last_write_timestamp: chrono::DateTime<Utc>,
     pub last_write_hostname: String,
+    pub file_table: FileMetaTable,
 }
 
-impl ModifiedMetadata {
-    pub fn from_sys_info() -> Self {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FileMetaEntry {
+    pub template: TemplatePath,
+    pub remote_path: PathBuf,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FileMetaTable {
+    pub entries: Vec<FileMetaEntry>,
+    /// Oldest modifed time of the files in the archive
+    pub oldest_modified_time: DateTime<Utc>,
+}
+impl FileMetaTable {
+    pub fn localise_entries(
+        &self,
+        info: &TemplateInfo,
+    ) -> impl Iterator<Item = Result<PathBuf, TemplateError>> {
+        self.entries
+            .iter()
+            .map(|e| e.template.apply_substs(info).map(PathBuf::from))
+    }
+}
+
+impl SyncMetadata {
+    pub fn from_sys_info(file_table: FileMetaTable) -> Self {
         let last_write_timestamp = chrono::Local::now().to_utc();
         let last_write_hostname = gethostname::gethostname()
             .to_str()
@@ -59,6 +83,7 @@ impl ModifiedMetadata {
         Self {
             last_write_timestamp,
             last_write_hostname,
+            file_table,
         }
     }
 }
@@ -104,7 +129,7 @@ impl<'s> StorageBackend<'s> {
     pub async fn read_file_str(&self, at: &Path) -> Result<String> {
         Ok(String::from_utf8(self.read_file(at).await?)?)
     }
-    pub async fn read_sync_time(&self) -> Result<Option<ModifiedMetadata>> {
+    pub async fn read_sync_time(&self) -> Result<Option<SyncMetadata>> {
         let sync_time_file = Path::new(SYNC_TIME_FILE);
         if !self.exists(sync_time_file).await? {
             return Ok(None);
@@ -113,7 +138,7 @@ impl<'s> StorageBackend<'s> {
         Ok(Some(serde_json::from_slice(&f)?))
     }
 
-    pub async fn write_sync_time(&mut self, metadata: &ModifiedMetadata) -> Result<()> {
+    pub async fn write_sync_time(&mut self, metadata: &SyncMetadata) -> Result<()> {
         let data = serde_json::to_vec(metadata)?;
         self.write_file(Path::new(SYNC_TIME_FILE), &data).await
     }

@@ -7,3 +7,4 @@
 - Fix dialog windows staying open even after game launch (eframe bug, switched to popout)
 - Fix manifest url config option being ignored
 - Add config validation
+- Fix downloading files from cloud when unneeded (on every launch)
