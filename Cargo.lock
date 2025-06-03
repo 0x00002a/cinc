@@ -488,9 +488,9 @@ dependencies = [
  "itertools",
  "popout",
  "reqwest",
+ "ron",
  "secret-service",
  "serde",
- "serde_json",
  "serde_yaml",
  "steamlocate",
  "tar",
@@ -2951,6 +2951,19 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "ron"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beceb6f7bf81c73e73aeef6dd1356d9a1b2b4909e1f0fc3e59b034f9572d7b7f"
+dependencies = [
+ "base64",
+ "bitflags 2.9.1",
+ "serde",
+ "serde_derive",
+ "unicode-ident",
 ]
 
 [[package]]

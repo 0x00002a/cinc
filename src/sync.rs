@@ -4,10 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Local, Utc};
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 use xz2::bufread::{XzDecoder, XzEncoder};
 
@@ -21,7 +20,6 @@ use crate::{
 
 const ARCHIVE_NAME: &str = "archive.tar.xz";
 const XZ_LEVEL: u32 = 5;
-const METADATA_NAME: &str = "file-meta.json";
 
 #[derive(Clone, Debug)]
 pub struct FileInfo<'f> {

@@ -28,7 +28,10 @@ pub enum BackendError {
     ChronoParse(#[from] chrono::ParseError),
 
     #[error(transparent)]
-    Json(#[from] serde_json::Error),
+    RonDe(#[from] ron::de::SpannedError),
+
+    #[error(transparent)]
+    RonSer(#[from] ron::Error),
 
     #[error(transparent)]
     Reqwuest(#[from] reqwest::Error),
@@ -42,7 +45,7 @@ pub enum BackendError {
 
 type Result<T, E = BackendError> = std::result::Result<T, E>;
 
-pub const SYNC_TIME_FILE: &str = "mod-meta.json";
+pub const SYNC_TIME_FILE: &str = "mod-meta.ron";
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct SyncMetadata {
@@ -135,12 +138,13 @@ impl<'s> StorageBackend<'s> {
             return Ok(None);
         }
         let f = self.read_file(sync_time_file).await?;
-        Ok(Some(serde_json::from_slice(&f)?))
+        Ok(Some(ron::de::from_bytes(&f)?))
     }
 
     pub async fn write_sync_time(&mut self, metadata: &SyncMetadata) -> Result<()> {
-        let data = serde_json::to_vec(metadata)?;
-        self.write_file(Path::new(SYNC_TIME_FILE), &data).await
+        let data = ron::ser::to_string(metadata)?;
+        self.write_file(Path::new(SYNC_TIME_FILE), data.as_bytes())
+            .await
     }
 }
 
