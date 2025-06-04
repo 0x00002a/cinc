@@ -227,6 +227,7 @@ async fn run() -> anyhow::Result<()> {
 
     match &args.op {
         cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {
+            debug!("launch command: {command:?}");
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
             }
