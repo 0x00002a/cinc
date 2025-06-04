@@ -53,6 +53,47 @@ pub fn extract_postfix<'p>(base: &'p Path, child: &'p Path) -> &'p Path {
     child.strip_prefix(base).unwrap()
 }
 
+/// Extract the common prefix of two paths
+///
+/// ```
+/// use std::path::Path;
+/// use cinc::paths::extract_prefix;
+///
+/// let p1 = Path::new("hello/world/bingle/splung");
+/// let p2 = Path::new("bingle/splung");
+/// assert_eq!(extract_prefix(p1, p2), Path::new("hello/world"));
+/// ```
+///
+/// # Panics
+/// If base is not a prefix of child
+pub fn extract_prefix<'p>(base: &'p Path, child: &Path) -> &'p Path {
+    let postfix_len = base
+        .components()
+        .rev()
+        .zip(child.components().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    assert!(
+        postfix_len >= 1,
+        "base is not prefix of child {base:?} and {child:?}"
+    );
+
+    let nb_comps = base.components().count();
+    let prefix_bytes = base
+        .components()
+        .take(nb_comps - postfix_len)
+        .fold(PathBuf::new(), |p, c| p.join(c))
+        .as_os_str()
+        .as_encoded_bytes()
+        .len();
+    // Safety: We just go these from as encoded bytes and we KNOW that it must be on a boundary
+    unsafe {
+        Path::new(std::ffi::OsStr::from_encoded_bytes_unchecked(
+            &base.as_os_str().as_encoded_bytes()[..prefix_bytes],
+        ))
+    }
+}
+
 pub trait PathExt {
     /// Join but without the overwriting that happens if other is an absolute path
     fn join_good(&self, other: impl Into<PathBuf>) -> PathBuf;
@@ -73,7 +114,7 @@ impl PathExt for Path {
 mod tests {
     use std::path::Path;
 
-    use crate::paths::extract_postfix;
+    use crate::paths::{extract_postfix, extract_prefix};
 
     #[test]
     fn postfix_extract() {
@@ -83,5 +124,12 @@ mod tests {
             extract_postfix(base, &child),
             Path::new("yipee").join("yay")
         );
+    }
+
+    #[test]
+    fn prefix_extract_unicode() {
+        let child = Path::new("🥀");
+        let base = Path::new("💀").join("😔").join("🥀");
+        assert_eq!(extract_prefix(&base, child), Path::new("💀").join("😔"));
     }
 }

@@ -1,15 +1,17 @@
 use std::{
     collections::HashMap,
     env,
+    ops::Deref,
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::config::SteamId;
+use crate::{config::SteamId, paths::PathExt};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct GameManifest {
     pub steam: Option<SteamInfo>,
     pub gog: Option<GogInfo>,
@@ -17,6 +19,22 @@ pub struct GameManifest {
     pub files: HashMap<TemplatePath, FileConfig>,
     #[serde(default)]
     pub launch: HashMap<TemplatePath, Vec<LaunchConfig>>,
+    pub install_dir: Option<GameInstallDir>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct EmptyObj {}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+// the manifest format is weird and has a hashmap here
+pub struct GameInstallDir(HashMap<String, EmptyObj>);
+
+impl Deref for GameInstallDir {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.keys().next().unwrap().as_str()
+    }
 }
 
 /// Path which may contain substitutions such as <base> or <winLocalAppData>
@@ -153,11 +171,14 @@ pub struct TemplateInfo {
     pub win_prefix: PathBuf,
     pub win_user: String,
     pub base_dir: Option<PathBuf>,
-    pub steam_root: Option<PathBuf>,
+    /// directory where games are installed. Under steam it should be the steam of the game otherwise the wine prefix usually
+    pub root: Option<PathBuf>,
     pub store_user_id: Option<String>,
     pub home_dir: Option<PathBuf>,
     pub xdg_config: Option<PathBuf>,
     pub xdg_data: Option<PathBuf>,
+    /// Install dir of the game in the manifest, or the game name
+    pub install_dir: Option<PathBuf>,
 }
 
 impl TemplatePath {
@@ -170,6 +191,69 @@ impl TemplatePath {
         Path::new(&self.0)
     }
 
+    fn do_repl(var: &str, info: &TemplateInfo) -> Result<PathBuf, TemplateError> {
+        let repl = match var {
+            "xdgData" => info
+                .xdg_data
+                .to_owned()
+                .or_else(dirs::data_dir)
+                .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
+            "xdgConfig" => info
+                .xdg_config
+                .to_owned()
+                .or_else(dirs::config_dir)
+                .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
+
+            "home" => info
+                .home_dir
+                .to_owned()
+                .or_else(env::home_dir)
+                .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
+            "winAppData" => info
+                .win_prefix
+                .join("users") // linux capitalisation senstive filesystems require this to be lowercase and windows doesn't care
+                .join(&info.win_user)
+                .join("AppData")
+                .join("Roaming"),
+
+            "winLocalAppData" => info
+                .win_prefix
+                .join("users")
+                .join(&info.win_user)
+                .join("AppData")
+                .join("Local"),
+            "winDocuments" => info
+                .win_prefix
+                .join("users")
+                .join(&info.win_user)
+                .join("Documents"),
+            "base" => info
+                .base_dir
+                .clone()
+                .ok_or(TemplateError::VariableNotAvailable("<base>"))
+                .or_else(|_| {
+                    Ok(Self::do_repl("root", info)?.join_good(Self::do_repl("game", info)?))
+                })?,
+            "root" => info
+                .root
+                .to_owned()
+                .ok_or(TemplateError::VariableNotAvailable("<root>"))?,
+            "storeUserId" => info
+                .store_user_id
+                .as_ref()
+                .ok_or(TemplateError::VariableNotAvailable("<storeUserId>"))?
+                .to_owned()
+                .into(),
+            "game" => info
+                .install_dir
+                .as_ref()
+                .ok_or(TemplateError::VariableNotAvailable("<game>"))?
+                .to_owned(),
+            _ => return Err(TemplateError::UnknownVariable(var.to_owned())),
+        };
+        Ok(repl)
+    }
+
     pub fn apply_substs(&self, info: &TemplateInfo) -> Result<String, TemplateError> {
         let mut end = 0;
         let mut substs = Vec::new();
@@ -179,58 +263,7 @@ impl TemplatePath {
                 .ok_or(TemplateError::NoClosingDelim)?
                 + end;
             let var = &self.0[start + 1..end];
-            let repl = match var {
-                "xdgData" => info
-                    .xdg_data
-                    .to_owned()
-                    .or_else(dirs::data_dir)
-                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
-                "xdgConfig" => info
-                    .xdg_config
-                    .to_owned()
-                    .or_else(dirs::config_dir)
-                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
-
-                "home" => info
-                    .home_dir
-                    .to_owned()
-                    .or_else(env::home_dir)
-                    .ok_or_else(|| TemplateError::FailedToLocateDir(var.to_owned()))?,
-                "winAppData" => info
-                    .win_prefix
-                    .join("users") // linux capitalisation senstive filesystems require this to be lowercase and windows doesn't care
-                    .join(&info.win_user)
-                    .join("AppData")
-                    .join("Roaming"),
-
-                "winLocalAppData" => info
-                    .win_prefix
-                    .join("users")
-                    .join(&info.win_user)
-                    .join("AppData")
-                    .join("Local"),
-                "winDocuments" => info
-                    .win_prefix
-                    .join("users")
-                    .join(&info.win_user)
-                    .join("Documents"),
-                "base" => info
-                    .base_dir
-                    .as_ref()
-                    .ok_or(TemplateError::VariableNotAvailable("base dir"))?
-                    .clone(),
-                "root" => info
-                    .steam_root
-                    .to_owned()
-                    .ok_or(TemplateError::VariableNotAvailable("steam root"))?,
-                "storeUserId" => info
-                    .store_user_id
-                    .as_ref()
-                    .ok_or(TemplateError::VariableNotAvailable("store user id"))?
-                    .to_owned()
-                    .into(),
-                _ => return Err(TemplateError::UnknownVariable(var.to_owned())),
-            };
+            let repl = Self::do_repl(var, info)?;
             substs.push((start, end, repl));
             end += 1;
         }
@@ -265,11 +298,34 @@ mod tests {
                 win_prefix: "".into(),
                 win_user: "".to_owned(),
                 base_dir: None,
-                steam_root: Some(PathBuf::from(root)),
+                root: Some(PathBuf::from(root)),
                 store_user_id: Some(user_id.to_owned()),
                 home_dir: None,
                 xdg_config: None,
                 xdg_data: None,
+                install_dir: None,
+            })
+            .unwrap();
+        assert_eq!(expected, got);
+    }
+
+    #[test]
+    fn repl_base_using_root_and_game() {
+        let root = "hello";
+        let install_dir = "world";
+        let expected = format!("{root}/{install_dir}/hmm");
+        let p = TemplatePath::new("<base>/hmm".to_owned());
+        let got = p
+            .apply_substs(&TemplateInfo {
+                win_prefix: "".into(),
+                win_user: "".to_owned(),
+                base_dir: None,
+                home_dir: None,
+                xdg_config: None,
+                xdg_data: None,
+                root: Some(root.to_owned().into()),
+                store_user_id: None,
+                install_dir: Some(install_dir.to_owned().into()),
             })
             .unwrap();
         assert_eq!(expected, got);

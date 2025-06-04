@@ -200,8 +200,6 @@ async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
     let args = CliArgs::try_parse()?;
 
-    //std::fs::write("/home/ash/args.txt", format!("{args:?}"));
-    //std::process::exit(1);
     init_file_logging().expect("failed to init file logging");
 
     let secrets = SecretsApi::new().await?;

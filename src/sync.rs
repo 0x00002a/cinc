@@ -14,7 +14,8 @@ use crate::{
     backends::{FileMetaEntry, FileMetaTable, StorageBackend, SyncMetadata},
     config::{SteamId, SteamId64},
     manifest::{FileTag, GameManifest, PlatformInfo, TemplateInfo, TemplatePath},
-    paths::{PathExt, extract_postfix, steam_dir},
+    paths::{self, PathExt, extract_postfix, steam_dir},
+    platform::HEROIC_APP_NAME,
     ui::{SyncChoices, SyncIssueInfo},
 };
 
@@ -37,6 +38,7 @@ pub struct SyncMgr<'f> {
 
 impl<'f> SyncMgr<'f> {
     pub fn from_steam_game(
+        game_name: &'f str,
         manifest: &'f GameManifest,
         app_id: SteamId,
         remote_name: &'f str,
@@ -51,6 +53,7 @@ impl<'f> SyncMgr<'f> {
             .map(SteamId64::new)
             .map(|id| id.to_id3().to_string());
         // local template subst
+        let install_dir = Some(manifest.install_dir.as_deref().unwrap_or(game_name).into());
         let local_info = TemplateInfo {
             win_prefix: steam_app_lib
                 .path()
@@ -61,12 +64,13 @@ impl<'f> SyncMgr<'f> {
                 .join("drive_c"),
             win_user: "steamuser".to_owned(),
             base_dir: Some(steam_app_lib.resolve_app_dir(&steam_app_manifest)),
-            steam_root: Some(steam_app_lib.path().to_owned()),
+            root: Some(steam_app_lib.path().to_owned()),
             store_user_id: store_user_id.clone(),
 
             home_dir: None,
             xdg_config: None,
             xdg_data: None,
+            install_dir: install_dir.clone(),
         };
 
         // remote template substs
@@ -74,28 +78,44 @@ impl<'f> SyncMgr<'f> {
             win_prefix: PathBuf::from("win_prefix"),
             win_user: "steamuser".to_owned(),
             base_dir: Some("base_dir".into()),
-            steam_root: Some("steam_root".into()),
+            root: Some("steam_root".into()),
             store_user_id,
 
             home_dir: Some("home_dir".into()),
             xdg_config: Some("xdg_config".into()),
             xdg_data: Some("xdg_data".into()),
+            install_dir,
         };
         Self::from_manifest(manifest, local_info, &remote_info, remote_name)
     }
-    pub fn from_umu_env(manifest: &'f GameManifest, remote_name: &'f str) -> Result<Self> {
+    pub fn from_umu_env(
+        game_name: &'f str,
+        manifest: &'f GameManifest,
+        remote_name: &'f str,
+    ) -> Result<Self> {
         let wine_prefix = std::env::var("WINEPREFIX").unwrap_or_else(|_| {
             todo!("we need to fallback to the umu id here https://umu.openwinecomponents.org/");
         });
         let wine_prefix = Path::new(&wine_prefix);
         // we need to work out the base dir using a little magic
+        let install_dir = Some(manifest.install_dir.as_deref().unwrap_or(game_name).into());
+        let root_dir = if are_we_launched_by_heroic() {
+            let r = dirs::home_dir().map(|h| h.join("Games").join("Heroic"));
+            debug!("we are running under heroic, setting the root dir to {r:?}");
+            r
+        } else {
+            debug!(
+                "not sure what launcher we're running under, can't set the root dir let's hope that's okay"
+            );
+            None
+        };
 
         // local template subst
         let local_info = TemplateInfo {
             win_prefix: wine_prefix.join("pfx").join("drive_c"),
             win_user: "steamuser".to_owned(),
             base_dir: None,
-            steam_root: None,
+            root: root_dir,
             store_user_id: None,
 
             home_dir: Some(
@@ -107,6 +127,7 @@ impl<'f> SyncMgr<'f> {
             ),
             xdg_config: None,
             xdg_data: None,
+            install_dir: install_dir.clone(),
         };
 
         // remote template substs
@@ -114,12 +135,13 @@ impl<'f> SyncMgr<'f> {
             win_prefix: PathBuf::from("win_prefix"),
             win_user: "steamuser".to_owned(),
             base_dir: Some("base_dir".into()),
-            steam_root: Some("steam_root".into()),
+            root: Some("steam_root".into()),
             store_user_id: None,
 
             home_dir: Some("home_dir".into()),
             xdg_config: Some("xdg_config".into()),
             xdg_data: Some("xdg_data".into()),
+            install_dir,
         };
         Self::from_manifest(manifest, local_info, &remote_info, remote_name)
     }
@@ -360,5 +382,38 @@ impl<'f> SyncMgr<'f> {
             }
         }
         Ok(b.into_inner()?)
+    }
+}
+
+#[allow(unused)]
+fn find_base_dir_from_exe_path<'p>(template: &TemplatePath, command: &'p Path) -> Option<&'p Path> {
+    let comps = template.as_raw_path().iter().collect_vec();
+    if comps.first().copied() != Some(std::ffi::OsStr::new("<base>")) {
+        debug!("failed to find base dir from exe path as template path does not contain base dir");
+        return None;
+    }
+    let p = comps.iter().skip(1).fold(PathBuf::new(), |p, c| p.join(c));
+    Some(paths::extract_prefix(command, &p))
+}
+
+/// Try and work out if we were launched by heroic
+fn are_we_launched_by_heroic() -> bool {
+    std::env::var(HEROIC_APP_NAME).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use crate::{manifest::TemplatePath, sync::find_base_dir_from_exe_path};
+
+    #[test]
+    fn get_base_path_from_exe() {
+        let template = TemplatePath::new("<base>/hello/world.exe");
+        let command = Path::new("woah/so-cool/hello/world.exe");
+        assert_eq!(
+            find_base_dir_from_exe_path(&template, command),
+            Some(Path::new("woah/so-cool"))
+        )
     }
 }

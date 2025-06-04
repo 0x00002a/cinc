@@ -2,6 +2,7 @@
 
 - Able to run under pure wine as well as umu
 - Able to find more games automatically when run under heroic
+- Fix missing template variable for some games under heroic
 
 # 0.2.0
 

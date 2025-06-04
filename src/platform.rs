@@ -93,9 +93,9 @@ fn find_likelist_umu_match<'a>(
     max
 }
 /// Set to the store the game came from, gog, epic, amazon
-const HEROIC_APP_SOURCE: &str = "HEROIC_APP_SOURCE";
+pub const HEROIC_APP_SOURCE: &str = "HEROIC_APP_SOURCE";
 /// Set to the app name for that store. For gog this seems to be the app id
-const HEROIC_APP_NAME: &str = "HEROIC_APP_NAME";
+pub const HEROIC_APP_NAME: &str = "HEROIC_APP_NAME";
 
 /// Try and find the game match based on environment variables set by some launchers (e.g. heroic)
 fn find_game_from_env_vars(manifest: &GameManifests) -> Result<Option<(&str, &GameManifest)>> {
@@ -120,6 +120,7 @@ pub struct LaunchInfo<'s, 'm> {
     b: StorageBackend<'s>,
     bname: String,
     game: &'m GameManifest,
+    game_name: &'m str,
 }
 
 impl<'s, 'm> LaunchInfo<'s, 'm> {
@@ -189,15 +190,18 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
             b,
             bname,
             game,
+            game_name,
         })
     }
 
     fn mk_sync_mgr(&self) -> Result<SyncMgr> {
         let r = match &self.platform {
             PlatformInfo::Steam { app_id, .. } => {
-                SyncMgr::from_steam_game(self.game, *app_id, &self.bname)
+                SyncMgr::from_steam_game(self.game_name, self.game, *app_id, &self.bname)
             }
-            PlatformInfo::Umu { .. } => SyncMgr::from_umu_env(self.game, &self.bname),
+            PlatformInfo::Umu { .. } => {
+                SyncMgr::from_umu_env(self.game_name, self.game, &self.bname)
+            }
         };
         if let Err(e) = r.as_ref() {
             error!("failed to get information about game: {e}");
@@ -287,8 +291,9 @@ mod tests {
             GameManifest {
                 steam: None,
                 gog: None,
+                install_dir: None,
                 files: [(
-                    TemplatePath::new(Path::new("<home>").join_good(&file_path).to_str().unwrap()),
+                    TemplatePath::new(Path::new("<base>").join_good(&file_path).to_str().unwrap()),
                     FileConfig {
                         preds: vec![],
                         tags: vec![FileTag::Save],
@@ -366,6 +371,7 @@ mod tests {
                 gog: Some(GogInfo { id }),
                 files: Default::default(),
                 launch: Default::default(),
+                install_dir: None,
             },
         );
         assert!(find_game_from_env_vars(&manifest).unwrap().is_some());
