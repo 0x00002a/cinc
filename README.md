@@ -75,6 +75,20 @@ advanced options for the game. Set the wrapper path to the absolute path to the
 binary (likely `/home/<name>/.local/share/cargo/bin/cinc`) and the arguments to
 `launch`.
 
+## A note on gamescope
+
+If you want to run the game under gamescope or anything else which would
+usually act as a wrapper make sure cinc is the **last** executable in the pile.
+It depends on being passed the exact command to run the game itself (i.e. NOT
+gamescope running the game) in order to do various parts of it's platform
+and sync paths detection.
+
+e.g. to run a game under steam with gamescope and cinc:
+
+```bash
+gamescope -- cinc launch -- %command%
+```
+
 ## Supported operating systems
 
 - Linux
