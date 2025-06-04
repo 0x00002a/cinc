@@ -1,4 +1,5 @@
 use std::{
+    env,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -29,7 +30,23 @@ impl PlatformInfo {
     ) -> Option<(&'a str, &'a GameManifest)> {
         match self {
             PlatformInfo::Steam { app_id } => find_in_manifest_by_steam_id(manifests, *app_id),
-            PlatformInfo::Umu { exe_path } => find_likelist_umu_match(manifests, exe_path),
+            PlatformInfo::Umu { exe_path } => {
+                let r = find_game_from_env_vars(manifests);
+                let reason = if let Err(e) = r.as_ref() {
+                    e.to_string()
+                } else {
+                    "no match".to_owned()
+                };
+                match r.ok().flatten() {
+                    Some(v) => Some(v),
+                    None => {
+                        debug!(
+                            "failed to discover game from env vars (reason: {reason}), falling back to executable name"
+                        );
+                        find_likelist_umu_match(manifests, exe_path)
+                    }
+                }
+            }
         }
     }
 }
@@ -74,6 +91,28 @@ fn find_likelist_umu_match<'a>(
         }
     }
     max
+}
+/// Set to the store the game came from, gog, epic, amazon
+const HEROIC_APP_SOURCE: &str = "HEROIC_APP_SOURCE";
+/// Set to the app name for that store. For gog this seems to be the app id
+const HEROIC_APP_NAME: &str = "HEROIC_APP_NAME";
+
+/// Try and find the game match based on environment variables set by some launchers (e.g. heroic)
+fn find_game_from_env_vars(manifest: &GameManifests) -> Result<Option<(&str, &GameManifest)>> {
+    // Heroic sets 2 environment variables that are of interest to us (https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/a7feb36ad98c72be8fc58cd2976276a03910f9ee/src/backend/launcher.ts#L840)
+    let source = env::var(HEROIC_APP_SOURCE)?;
+    let name = env::var(HEROIC_APP_NAME)?;
+
+    if source == "gog" {
+        debug!("found gog source, attempting to match on id {name}");
+        let gog_id: u32 = name.parse()?;
+
+        return Ok(manifest
+            .iter()
+            .find(|(_, m)| m.gog.as_ref().map(|g| g.id == gog_id).unwrap_or(false))
+            .map(|(s, m)| (s.as_str(), m)));
+    }
+    Ok(None)
 }
 
 pub struct LaunchInfo<'s, 'm> {
@@ -219,8 +258,9 @@ mod tests {
     use crate::{
         args::{LaunchArgs, PlatformOpt},
         config::{BackendInfo, BackendTy, Config},
-        manifest::{FileConfig, FileTag, GameManifest, TemplatePath},
+        manifest::{FileConfig, FileTag, GameManifest, GogInfo, TemplatePath},
         paths::PathExt,
+        platform::{HEROIC_APP_NAME, HEROIC_APP_SOURCE, find_game_from_env_vars},
         secrets::SecretsApi,
         sync::ARCHIVE_NAME,
     };
@@ -246,6 +286,7 @@ mod tests {
             "test".to_owned(),
             GameManifest {
                 steam: None,
+                gog: None,
                 files: [(
                     TemplatePath::new(Path::new("<home>").join_good(&file_path).to_str().unwrap()),
                     FileConfig {
@@ -309,5 +350,24 @@ mod tests {
                 .is_none()
         );
         info.download(&launch.b, false, &metadata).await.unwrap();
+    }
+    #[test]
+    fn find_game_from_vars_heroic() {
+        let id = 1;
+        let mut manifest = HashMap::new();
+        unsafe {
+            std::env::set_var(HEROIC_APP_SOURCE, "gog");
+            std::env::set_var(HEROIC_APP_NAME, "1");
+        }
+        manifest.insert(
+            "test".to_owned(),
+            GameManifest {
+                steam: None,
+                gog: Some(GogInfo { id }),
+                files: Default::default(),
+                launch: Default::default(),
+            },
+        );
+        assert!(find_game_from_env_vars(&manifest).unwrap().is_some());
     }
 }

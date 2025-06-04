@@ -12,6 +12,7 @@ use crate::config::SteamId;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameManifest {
     pub steam: Option<SteamInfo>,
+    pub gog: Option<GogInfo>,
     #[serde(default)]
     pub files: HashMap<TemplatePath, FileConfig>,
     #[serde(default)]
@@ -125,10 +126,12 @@ impl Arch {
         self == target
     }
 }
+pub type SteamInfo = StoreInfo<SteamId>;
+pub type GogInfo = StoreInfo<u32>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SteamInfo {
-    pub id: SteamId,
+pub struct StoreInfo<Id> {
+    pub id: Id,
 }
 
 /// Key is the name

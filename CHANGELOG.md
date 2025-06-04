@@ -1,6 +1,7 @@
 # 0.2.1
 
 - Able to run under pure wine as well as umu
+- Able to find more games automatically when run under heroic
 
 # 0.2.0
 
