@@ -151,6 +151,7 @@ pub enum PlatformOpt {
     Auto,
 }
 const UMU_EXE_NAME: &str = "umu-run";
+const WINE_EXE_NAME: &str = "wine";
 
 impl LaunchArgs {
     /// Resolve the platform to one which is not auto
@@ -159,11 +160,10 @@ impl LaunchArgs {
             PlatformOpt::Auto => {
                 if self.command.iter().any(|s| s.starts_with("AppId=")) {
                     Some(PlatformOpt::Steam)
-                } else if self
+                } else if let Some(UMU_EXE_NAME | WINE_EXE_NAME) = self
                     .command
                     .first()
-                    .map(|c| Path::new(c).file_name() == Some(std::ffi::OsStr::new(UMU_EXE_NAME)))
-                    .unwrap_or(false)
+                    .and_then(|c| Path::new(c).file_name().and_then(|p| p.to_str()))
                 {
                     Some(PlatformOpt::Umu)
                 } else {

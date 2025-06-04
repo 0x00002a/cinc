@@ -1,3 +1,6 @@
+# 0.2.1
+
+- Able to run under pure wine as well as umu
 
 # 0.2.0
 
