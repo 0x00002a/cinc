@@ -221,6 +221,14 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
     }
 
     pub async fn sync_up(&self) -> Result<()> {
+        if let Some(metadata) = self.b.read_sync_time().await? {
+            if !metadata.is_version_write_compatabible() {
+                Err(IncomaptibleCincVersionError {
+                    server_version: metadata.last_write_cinc_version.clone(),
+                    read: false,
+                })?;
+            }
+        }
         let info = self.mk_sync_mgr()?;
 
         time! {
@@ -232,11 +240,25 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("incompatible cinc version on the server {server_version}")]
+pub struct IncomaptibleCincVersionError {
+    pub server_version: semver::Version,
+    /// was this during a read or a write
+    pub read: bool,
+}
+
 async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()> {
     let Some(metadata) = b.read_sync_time().await? else {
         debug!("server has no metadata, we don't have to do anything");
         return Ok(());
     };
+    if !metadata.is_version_read_compatabible() {
+        Err(IncomaptibleCincVersionError {
+            server_version: metadata.last_write_cinc_version.clone(),
+            read: true,
+        })?;
+    }
     if let Some(sync_info) = info.are_local_files_newer(&metadata).await? {
         warn!("found local files newer than local, showing confirmation box to the user...");
 
@@ -331,6 +353,7 @@ mod tests {
                     &LaunchArgs {
                         platform: PlatformOpt::Auto,
                         no_upload: false,
+                        no_download: false,
                         manifest_app_id_override: None,
                         command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
                     },
@@ -390,6 +413,7 @@ mod tests {
         let largs = &LaunchArgs {
             platform: PlatformOpt::Auto,
             no_upload: false,
+            no_download: false,
             manifest_app_id_override: Some(id),
             command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
         };

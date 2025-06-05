@@ -9,6 +9,7 @@ use webdav::WebDavStore;
 
 use crate::{
     config::{BackendInfo, BackendTy, WebDavInfo},
+    curr_crate_ver,
     manifest::{TemplateError, TemplateInfo, TemplatePath},
     secrets::SecretsApi,
 };
@@ -52,6 +53,40 @@ pub struct SyncMetadata {
     pub last_write_timestamp: chrono::DateTime<Utc>,
     pub last_write_hostname: String,
     pub file_table: FileMetaTable,
+    #[serde(default = "default_last_write_cinc_version")]
+    pub last_write_cinc_version: semver::Version,
+}
+
+impl SyncMetadata {
+    /// Check that the version is compatible for a read
+    ///
+    /// This in practice requires that there is no breaking change difference between
+    /// our current version and the one in the metadata. If there is then a read may not work
+    /// and we should abort
+    pub fn is_version_read_compatabible(&self) -> bool {
+        check_version_compat_read(&self.last_write_cinc_version, &curr_crate_ver())
+    }
+
+    /// Check that the version is compatible for a write
+    ///
+    /// This in practice means we need to be either a non breaking change from the last writer
+    /// OR a strictly younger breaking change, e.g. 0.3.0 is allowed to write when previousely
+    /// 0.2.2 wrote but NOT the other way around as we want to enforce an upgrade here as jkkjk
+    pub fn is_version_write_compatabible(&self) -> bool {
+        check_version_compat_write(&self.last_write_cinc_version, &curr_crate_ver())
+    }
+}
+
+const fn check_version_compat_read(curr: &semver::Version, prev: &semver::Version) -> bool {
+    curr.major == prev.major && (curr.major != 0 || (curr.minor == prev.minor))
+}
+
+const fn check_version_compat_write(curr: &semver::Version, prev: &semver::Version) -> bool {
+    curr.major >= prev.major && (curr.major != 0 || (curr.minor >= prev.minor))
+}
+
+fn default_last_write_cinc_version() -> semver::Version {
+    semver::Version::new(0, 2, 1)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -87,6 +122,7 @@ impl SyncMetadata {
             last_write_timestamp,
             last_write_hostname,
             file_table,
+            last_write_cinc_version: curr_crate_ver(),
         }
     }
 }
@@ -166,5 +202,76 @@ impl BackendInfo {
                 secrets,
             )),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use semver::Version;
+
+    use crate::backends::{check_version_compat_read, check_version_compat_write};
+
+    #[test]
+    fn version_compat_read_leading_zero() {
+        assert!(check_version_compat_read(
+            &Version::parse("0.1.0").unwrap(),
+            &Version::parse("0.1.1").unwrap()
+        ));
+        assert!(!check_version_compat_read(
+            &Version::parse("0.1.0").unwrap(),
+            &Version::parse("0.2.0").unwrap()
+        ));
+        assert!(!check_version_compat_read(
+            &Version::parse("0.1.1").unwrap(),
+            &Version::parse("0.2.1").unwrap()
+        ));
+    }
+
+    #[test]
+    fn version_compat_read_no_leading_zero() {
+        assert!(check_version_compat_read(
+            &Version::parse("1.0.0").unwrap(),
+            &Version::parse("1.1.0").unwrap()
+        ));
+        assert!(!check_version_compat_read(
+            &Version::parse("1.1.0").unwrap(),
+            &Version::parse("0.2.0").unwrap()
+        ));
+        assert!(!check_version_compat_read(
+            &Version::parse("0.1.0").unwrap(),
+            &Version::parse("1.2.1").unwrap()
+        ));
+    }
+
+    #[test]
+    fn version_compat_write_leading_zero() {
+        assert!(check_version_compat_write(
+            &Version::parse("0.1.0").unwrap(),
+            &Version::parse("0.1.1").unwrap()
+        ));
+        assert!(!check_version_compat_write(
+            &Version::parse("0.1.0").unwrap(),
+            &Version::parse("0.2.0").unwrap()
+        ));
+        assert!(check_version_compat_write(
+            &Version::parse("0.2.1").unwrap(),
+            &Version::parse("0.1.1").unwrap()
+        ));
+    }
+
+    #[test]
+    fn version_compat_write_no_leading_zero() {
+        assert!(check_version_compat_write(
+            &Version::parse("1.0.0").unwrap(),
+            &Version::parse("1.1.0").unwrap()
+        ));
+        assert!(check_version_compat_write(
+            &Version::parse("1.1.0").unwrap(),
+            &Version::parse("0.2.0").unwrap()
+        ));
+        assert!(!check_version_compat_write(
+            &Version::parse("0.1.0").unwrap(),
+            &Version::parse("1.2.1").unwrap()
+        ));
     }
 }

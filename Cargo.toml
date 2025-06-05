@@ -25,6 +25,7 @@ popout = "0.1.0"
 reqwest = { version = "0.12.15" }
 ron = "0.10.1"
 secret-service = { version = "5.0.0", features = ["rt-tokio-crypto-rust"] }
+semver = { version = "1.0.26", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yaml = "0.9.34"
 steamlocate = "2.0.1"

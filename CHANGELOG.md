@@ -1,3 +1,7 @@
+# 0.2.2
+
+- Check for incompatible cinc version on the server
+
 # 0.2.1
 
 - Able to run under pure wine as well as umu

@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use popout::{Color32, LogicalSize, RichText};
+use popout::{Color32, LogicalSize, RichText, WindowAttributes, egui::TextStyle};
+
+use crate::{curr_crate_ver, platform::IncomaptibleCincVersionError};
 
 pub struct SyncIssueInfo {
     pub local_time: DateTime<Utc>,
@@ -89,6 +91,99 @@ you have made any progress since the time displayed above for the remote changes
             .with_min_inner_size(min_sz),
     )?;
     Ok(r.unwrap_or(SyncChoices::Exit))
+}
+
+pub fn version_mismatch(err: &IncomaptibleCincVersionError) -> anyhow::Result<()> {
+    let title = "Incompatible cinc version detected";
+    popout::create_window(
+        |ui| {
+            ui.label(RichText::new(title).heading().color(Color32::YELLOW));
+            ui.separator();
+            ui.label(RichText::new("To avoid data loss cinc will not continue").strong());
+            let msg = format!(
+                "The version of cinc used to write the files on the server ({}) is incompatible with the current version ({}).",
+                err.server_version,
+                curr_crate_ver()
+            );
+            ui.label(RichText::new(msg).text_style(TextStyle::Body));
+
+            if err.read {
+                ui.label("You can solve this by specifying --upload-only after the launch argument. This will overwrite the server version with your local files");
+                ui.label(
+                    RichText::new(
+                        "PLEASE ENSURE YOUR LOCAL FILES ARE THE LATEST VERSION BEFORE DOING THIS",
+                    )
+                    .color(Color32::RED)
+                    .strong(),
+                );
+            } else {
+                ui.label("You can solve this by upgrading your version of cinc to match the version on the server");
+            }
+
+            if ui.button("Close").clicked() {
+                Some(())
+            } else {
+                None
+            }
+        },
+        WindowAttributes::default()
+            .with_title("Incompatible cinc version detected")
+            .with_inner_size(LogicalSize::new(500.0, 200.0)),
+    )?;
+    Ok(())
+}
+
+pub fn show_no_download_confirmation() -> anyhow::Result<bool> {
+    let mut txt_entry = String::new();
+    let title = "Potentially destructive action";
+    let confirmation = "trust me";
+    let mut mismatch = false;
+    let r = popout::create_window(
+        |ui| {
+            if mismatch && !txt_entry.is_empty() {
+                mismatch = false;
+            }
+            ui.label(RichText::new(title).heading().color(Color32::YELLOW));
+            ui.label("You have passed --upload-only. This may result in data loss");
+            ui.label(
+                RichText::new(
+                    r#"
+if you have made progress on another computer and not successfully run the game at least once on
+this one you will LOSE YOUR PROGRESS FROM THE OTHER COMPUTER
+        "#
+                    .replace('\n', ""),
+                )
+                .color(Color32::RED)
+                .strong(),
+            );
+            ui.label(format!(
+                "To ensure you mean to continue please enter '{confirmation}' in the text box below"
+            ));
+            ui.text_edit_singleline(&mut txt_entry);
+            if mismatch {
+                ui.label(RichText::new("That doesn't match").color(Color32::YELLOW));
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    return Some(false);
+                }
+                if ui.button("Confirm").clicked() {
+                    if txt_entry != confirmation {
+                        mismatch = true;
+                        txt_entry.clear();
+                    } else {
+                        return Some(true);
+                    }
+                }
+                None
+            })
+            .inner
+        },
+        WindowAttributes::default()
+            .with_title(title)
+            .with_inner_size(LogicalSize::new(500.0, 200.0)),
+    )?;
+    Ok(r == Some(true))
 }
 
 pub fn show_error_dialog(err: &impl std::fmt::Debug) -> anyhow::Result<()> {

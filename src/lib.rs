@@ -20,3 +20,7 @@ macro_rules! time {
         );
     };
 }
+
+pub fn curr_crate_ver() -> semver::Version {
+    semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("failed to parse crate version??")
+}

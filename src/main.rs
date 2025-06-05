@@ -23,9 +23,10 @@ use chrono::Local;
 use cinc::{
     args::{CliArgs, LaunchArgs},
     config::{BackendInfo, BackendTy, Config, DEFAULT_MANIFEST_URL, Secret, WebDavInfo},
+    curr_crate_ver,
     manifest::GameManifests,
     paths::{cache_dir, config_dir, log_dir},
-    platform::LaunchInfo,
+    platform::{IncomaptibleCincVersionError, LaunchInfo},
     secrets::SecretsApi,
     ui::{self, SyncIssueInfo},
 };
@@ -224,10 +225,20 @@ async fn run() -> anyhow::Result<()> {
     debug!("secrets available: {}", secrets.available());
 
     match &args.op {
-        cinc::args::Operation::Launch(largs @ LaunchArgs { command, .. }) => {
+        cinc::args::Operation::Launch(
+            largs @ LaunchArgs {
+                no_download,
+                command,
+                ..
+            },
+        ) => {
             debug!("launch command: {command:?}");
             if cfg.backends.is_empty() {
                 bail!("invalid config: at least one backend must be specified");
+            }
+            if *no_download && !ui::show_no_download_confirmation()? {
+                tracing::info!("aborting due to user deciding not to continue");
+                return Ok(());
             }
             let manifest_start = SystemTime::now();
             let manifests = get_game_manifests(manifest_url).await?;
@@ -383,6 +394,14 @@ async fn run() -> anyhow::Result<()> {
                 print_success!("successfully set backend '{name}' as the default backend");
             }
         },
+        cinc::args::Operation::DebugVersionIncompat { read } => {
+            let curr_v = curr_crate_ver();
+            let new_v = semver::Version::new(curr_v.major + 1, curr_v.minor, curr_v.patch);
+            Err(IncomaptibleCincVersionError {
+                server_version: new_v,
+                read: *read,
+            })?;
+        }
     }
     Ok(())
 }
@@ -392,7 +411,8 @@ async fn main() {
     if std::env::args().any(|s| matches!(s.as_str(), "--help" | "-h" | "help")) {
         CliArgs::parse(); // this will print the help to the console
     }
-    let is_without_term = std::env::args().contains("launch");
+    let is_without_term =
+        std::env::args().any(|a| matches!(a.as_str(), "launch" | "debug-version-incompat"));
     if !std::env::args().contains("--no-panic-hook") {
         let prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
@@ -418,7 +438,12 @@ async fn main() {
     if let Err(e) = run().await {
         tracing::error!("{e:?}");
         if is_without_term {
-            let _ = ui::show_error_dialog(&e);
+            if let Some(e @ IncomaptibleCincVersionError { .. }) = e.downcast_ref() {
+                let _ = ui::version_mismatch(e);
+            }
+            if let Err(e) = ui::show_error_dialog(&e) {
+                tracing::error!("error while displaying error dialog to the user, uh oh: {e:?}");
+            }
         } else {
             eprintln!("{}", format!("{e:?}").red());
         }

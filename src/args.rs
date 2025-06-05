@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::{
-    Args, Parser, Subcommand, ValueEnum,
+    ArgAction, Args, Parser, Subcommand, ValueEnum,
     builder::{PossibleValue, Styles, styling::AnsiColor},
 };
 
@@ -52,6 +52,13 @@ pub enum Operation {
         remote_name: String,
         #[arg(default_value = "debug writer", long)]
         last_writer: String,
+    },
+    /// Command to debug the version incompat screen, hidden from the user
+    #[command(hide = true)]
+    DebugVersionIncompat {
+        /// Whether to display a read or write error dialog
+        #[arg(default_value_t = true, long, action = ArgAction::Set)]
+        read: bool,
     },
 
     /// Show a password input and echo it, for debugging
@@ -127,6 +134,14 @@ pub struct LaunchArgs {
     /// Don't upload after closing, this is a debug flag and is hidden from the user
     #[arg(long = "debug-no-upload", hide = true, default_value = "false")]
     pub no_upload: bool,
+
+    /// Do not download any files, only upload your local changes (on game close)
+    ///
+    /// Be aware this is A DESTRUCTIVE ACTION if you have made progress on another computer and not
+    /// successfully run the game at least once on this one you will LOSE YOUR PROGRESS FROM THE
+    /// OTHER COMPUTER
+    #[arg(long = "upload-only", default_value_t = false)]
+    pub no_download: bool,
 
     /// Specify the steam app id used to find the game in the manifest directly
     ///
