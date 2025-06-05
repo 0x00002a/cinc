@@ -147,11 +147,11 @@ pub fn show_no_download_confirmation() -> anyhow::Result<bool> {
             ui.label("You have passed --upload-only. This may result in data loss");
             ui.label(
                 RichText::new(
-                    r#"
-if you have made progress on another computer and not successfully run the game at least once on
+                    r#"If
+you have made progress on another computer and not successfully run the game at least once on
 this one you will LOSE YOUR PROGRESS FROM THE OTHER COMPUTER
         "#
-                    .replace('\n', ""),
+                    .replace('\n', " "),
                 )
                 .color(Color32::RED)
                 .strong(),

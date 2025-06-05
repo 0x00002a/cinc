@@ -71,7 +71,7 @@ impl SyncMetadata {
     ///
     /// This in practice means we need to be either a non breaking change from the last writer
     /// OR a strictly younger breaking change, e.g. 0.3.0 is allowed to write when previousely
-    /// 0.2.2 wrote but NOT the other way around as we want to enforce an upgrade here as jkkjk
+    /// 0.2.2 wrote but NOT the other way around as we want to enforce an upgrade here
     pub fn is_version_write_compatabible(&self) -> bool {
         check_version_compat_write(&self.last_write_cinc_version, &curr_crate_ver())
     }
