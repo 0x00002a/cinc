@@ -29,6 +29,9 @@ pub struct CliArgs {
     ///
     /// This obviousely has no effect for some commands that are purely
     /// query, e.g. listing backends
+    ///
+    /// Note this does NOT affect things like the manifest cache it is only for
+    /// the files related to syncing
     #[arg(long, short = 'n', required = false, default_value_t = false)]
     pub dry_run: bool,
 
