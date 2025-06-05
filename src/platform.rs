@@ -257,7 +257,7 @@ async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, env, path::Path};
+    use std::{collections::HashMap, path::Path};
 
     use crate::{
         args::{LaunchArgs, PlatformOpt},
@@ -268,44 +268,19 @@ mod tests {
         secrets::SecretsApi,
         sync::ARCHIVE_NAME,
     };
+    use temp_env::async_with_vars;
     use test_log::test;
 
     use super::LaunchInfo;
 
-    #[test(tokio::test)]
-    async fn local_fs_sync() {
+    async fn run_sync_test(largs: &LaunchArgs, game: GameManifest) {
         let root = testdir::testdir!();
         let contents = "hello-world";
         let file_path = root.join("file");
         std::fs::write(&file_path, contents).unwrap();
-        let launch_exe = "run.exe";
-        let wine_prefix = root.join("wineprefix");
-        std::fs::create_dir_all(&wine_prefix).unwrap();
-        unsafe {
-            env::set_var("WINEPREFIX", wine_prefix.to_str().unwrap());
-        }
 
         let mut manifest = HashMap::new();
-        manifest.insert(
-            "test".to_owned(),
-            GameManifest {
-                steam: None,
-                gog: None,
-                install_dir: None,
-                files: [(
-                    TemplatePath::new(Path::new("<base>").join_good(&file_path).to_str().unwrap()),
-                    FileConfig {
-                        preds: vec![],
-                        tags: vec![FileTag::Save],
-                    },
-                )]
-                .into_iter()
-                .collect(),
-                launch: [(TemplatePath::new(launch_exe), vec![])]
-                    .into_iter()
-                    .collect(),
-            },
-        );
+        manifest.insert("test".to_owned(), game);
         let local_path = root.join("store");
         let cfg = Config {
             default_backend: "t".to_owned(),
@@ -318,18 +293,7 @@ mod tests {
             }],
         };
         let secrets = SecretsApi::new_unavailable();
-        let launch = LaunchInfo::new(
-            &cfg,
-            &manifest,
-            &secrets,
-            &LaunchArgs {
-                platform: PlatformOpt::Auto,
-                no_upload: false,
-                app_id: None,
-                command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
-            },
-        )
-        .unwrap();
+        let launch = LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
         let archive_p = local_path.join("test").join(ARCHIVE_NAME);
 
         launch.sync_down().await.unwrap();
@@ -355,6 +319,51 @@ mod tests {
                 .is_none()
         );
         info.download(&launch.b, false, &metadata).await.unwrap();
+    }
+
+    #[test(tokio::test)]
+    async fn local_fs_sync() {
+        let root = testdir::testdir!();
+        let contents = "hello-world";
+        let file_path = root.join("file");
+        std::fs::write(&file_path, contents).unwrap();
+        let launch_exe = "run.exe";
+        let wine_prefix = root.join("wineprefix");
+        std::fs::create_dir_all(&wine_prefix).unwrap();
+        async_with_vars(
+            [("WINEPREFIX", Some(wine_prefix.to_str().unwrap()))],
+            async {
+                run_sync_test(
+                    &LaunchArgs {
+                        platform: PlatformOpt::Auto,
+                        no_upload: false,
+                        app_id: None,
+                        command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
+                    },
+                    GameManifest {
+                        steam: None,
+                        gog: None,
+                        install_dir: None,
+                        files: [(
+                            TemplatePath::new(
+                                Path::new("<base>").join_good(&file_path).to_str().unwrap(),
+                            ),
+                            FileConfig {
+                                preds: vec![],
+                                tags: vec![FileTag::Save],
+                            },
+                        )]
+                        .into_iter()
+                        .collect(),
+                        launch: [(TemplatePath::new(launch_exe), vec![])]
+                            .into_iter()
+                            .collect(),
+                    },
+                )
+                .await;
+            },
+        )
+        .await;
     }
     #[test]
     fn find_game_from_vars_heroic() {

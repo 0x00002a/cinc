@@ -46,5 +46,6 @@ walkdir = "2.5.0"
 xz2 = "0.1.7"
 
 [dev-dependencies]
+temp-env = { version = "0.3.6", features = ["async_closure"] }
 test-log = { version = "0.2.17", features = ["trace"] }
 testdir = "0.9.3"

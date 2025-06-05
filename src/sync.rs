@@ -94,7 +94,7 @@ impl<'f> SyncMgr<'f> {
         remote_name: &'f str,
     ) -> Result<Self> {
         let wine_prefix = std::env::var("WINEPREFIX").unwrap_or_else(|_| {
-            todo!("we need to fallback to the umu id here https://umu.openwinecomponents.org/");
+            todo!("WINEPREFIX not found, todo: we need to fallback to the umu id here https://umu.openwinecomponents.org/");
         });
         let wine_prefix = Path::new(&wine_prefix);
         // we need to work out the base dir using a little magic
