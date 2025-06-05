@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::{config::SteamId, paths::PathExt};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GameManifest {
     pub steam: Option<SteamInfo>,

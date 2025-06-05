@@ -257,12 +257,17 @@ async fn cloud_sync_down(b: &StorageBackend<'_>, info: SyncMgr<'_>) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, path::Path};
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+    };
 
     use crate::{
         args::{LaunchArgs, PlatformOpt},
-        config::{BackendInfo, BackendTy, Config},
-        manifest::{FileConfig, FileTag, GameManifest, GogInfo, TemplatePath},
+        config::{BackendInfo, BackendTy, Config, SteamId},
+        manifest::{
+            FileConfig, FileTag, GameManifest, GameManifests, GogInfo, SteamInfo, TemplatePath,
+        },
         paths::PathExt,
         platform::{HEROIC_APP_NAME, HEROIC_APP_SOURCE, find_game_from_env_vars},
         secrets::SecretsApi,
@@ -273,28 +278,17 @@ mod tests {
 
     use super::LaunchInfo;
 
-    async fn run_sync_test(largs: &LaunchArgs, game: GameManifest) {
-        let root = testdir::testdir!();
+    async fn run_sync_test(root: &Path, file_path: &Path, largs: &LaunchArgs, game: GameManifest) {
         let contents = "hello-world";
-        let file_path = root.join("file");
-        std::fs::write(&file_path, contents).unwrap();
+        std::fs::write(file_path, contents).unwrap();
 
-        let mut manifest = HashMap::new();
-        manifest.insert("test".to_owned(), game);
+        let manifest = mk_manifest(game);
         let local_path = root.join("store");
-        let cfg = Config {
-            default_backend: "t".to_owned(),
-            manifest_url: None,
-            backends: vec![BackendInfo {
-                name: "t".to_owned(),
-                info: BackendTy::Filesystem {
-                    root: local_path.clone(),
-                },
-            }],
-        };
+        let archive_p = local_path.join("test").join(ARCHIVE_NAME);
+
+        let cfg = test_cfg(local_path);
         let secrets = SecretsApi::new_unavailable();
         let launch = LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
-        let archive_p = local_path.join("test").join(ARCHIVE_NAME);
 
         launch.sync_down().await.unwrap();
         assert!(!std::fs::exists(&archive_p).unwrap());
@@ -303,10 +297,10 @@ mod tests {
             std::fs::exists(&archive_p).unwrap(),
             "didn't write archive to {archive_p:?}"
         );
-        std::fs::remove_file(&file_path).unwrap();
+        std::fs::remove_file(file_path).unwrap();
         launch.sync_down().await.unwrap();
         assert!(
-            !std::fs::exists(&file_path).unwrap(),
+            !std::fs::exists(file_path).unwrap(),
             "sync downloaded even though it didn't have to"
         );
 
@@ -323,10 +317,8 @@ mod tests {
 
     #[test(tokio::test)]
     async fn local_fs_sync() {
-        let root = testdir::testdir!();
-        let contents = "hello-world";
+        let root = testdir::testdir!("local_fs_sync");
         let file_path = root.join("file");
-        std::fs::write(&file_path, contents).unwrap();
         let launch_exe = "run.exe";
         let wine_prefix = root.join("wineprefix");
         std::fs::create_dir_all(&wine_prefix).unwrap();
@@ -334,6 +326,8 @@ mod tests {
             [("WINEPREFIX", Some(wine_prefix.to_str().unwrap()))],
             async {
                 run_sync_test(
+                    &root,
+                    &file_path,
                     &LaunchArgs {
                         platform: PlatformOpt::Auto,
                         no_upload: false,
@@ -364,6 +358,45 @@ mod tests {
             },
         )
         .await;
+    }
+    fn test_cfg(root: PathBuf) -> Config {
+        Config {
+            default_backend: "t".to_owned(),
+            manifest_url: None,
+            backends: vec![BackendInfo {
+                name: "t".to_owned(),
+                info: BackendTy::Filesystem { root },
+            }],
+        }
+    }
+    fn mk_manifest(game: GameManifest) -> GameManifests {
+        let mut manifest = HashMap::new();
+        manifest.insert("test".to_owned(), game);
+        manifest
+    }
+
+    #[test(tokio::test)]
+    async fn discovery_via_forced_steam_id_with_heroic() {
+        let root = testdir::testdir!("discovery_via_forced_steam_id_with_heroic");
+        let launch_exe = "run.exe";
+        let id = SteamId::new(0);
+
+        let game =
+            // it wouldn't normally find this
+            GameManifest {
+                steam: Some(SteamInfo { id }),
+                ..Default::default()
+            };
+        let largs = &LaunchArgs {
+            platform: PlatformOpt::Auto,
+            no_upload: false,
+            app_id: Some(id),
+            command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
+        };
+        let manifest = mk_manifest(game);
+        let cfg = test_cfg(root);
+        let secrets = SecretsApi::new_unavailable();
+        LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
     }
     #[test]
     fn find_game_from_vars_heroic() {
