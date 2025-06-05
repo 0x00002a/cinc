@@ -131,9 +131,10 @@ pub struct LaunchArgs {
     /// Specify the steam app id used to find the game in the manifest directly
     ///
     /// This is useful in case the actual app id on steam differs from the app id steam tells cinc,
-    /// e.g. when you are launching a non-steam game through steam
+    /// e.g. when you are launching a non-steam game through steam, or when cinc cannot find
+    /// the game manifest (it will use this id to find the game's manifest)
     #[arg(long = "steam-app-id")]
-    pub app_id: Option<SteamId>,
+    pub manifest_app_id_override: Option<SteamId>,
 
     #[arg(help = "Command to run the game, e.g. for steam pass as %command%")]
     pub command: Vec<String>,

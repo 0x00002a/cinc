@@ -135,7 +135,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
                 "failed to resolve platform we are running on, try specifying it explicitly with --platform"
             );
         };
-        let manifest_steam_id = largs.app_id;
+        let manifest_steam_id = largs.manifest_app_id_override;
 
         let platform = match platform {
             PlatformOpt::Steam => {
@@ -331,7 +331,7 @@ mod tests {
                     &LaunchArgs {
                         platform: PlatformOpt::Auto,
                         no_upload: false,
-                        app_id: None,
+                        manifest_app_id_override: None,
                         command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
                     },
                     GameManifest {
@@ -390,7 +390,7 @@ mod tests {
         let largs = &LaunchArgs {
             platform: PlatformOpt::Auto,
             no_upload: false,
-            app_id: Some(id),
+            manifest_app_id_override: Some(id),
             command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
         };
         let manifest = mk_manifest(game);
