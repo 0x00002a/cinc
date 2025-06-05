@@ -1,6 +1,6 @@
 [package]
 name = "cinc"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.87.0"
 license = "MIT"
@@ -46,6 +46,5 @@ walkdir = "2.5.0"
 xz2 = "0.1.7"
 
 [dev-dependencies]
-pollster = { version = "0.4.0", features = ["macro"] }
 test-log = { version = "0.2.17", features = ["trace"] }
 testdir = "0.9.3"
