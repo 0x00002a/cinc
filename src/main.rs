@@ -428,7 +428,7 @@ async fn main() {
                 });
             if is_without_term {
                 if let Some(msg) = msg {
-                    let _ = ui::show_panic_dialog(msg, info.location());
+                    wrap(ui::show_panic_dialog(msg, info.location()));
                 }
             }
 
@@ -439,14 +439,19 @@ async fn main() {
         tracing::error!("{e:?}");
         if is_without_term {
             if let Some(e @ IncomaptibleCincVersionError { .. }) = e.downcast_ref() {
-                let _ = ui::version_mismatch(e);
-            }
-            if let Err(e) = ui::show_error_dialog(&e) {
-                tracing::error!("error while displaying error dialog to the user, uh oh: {e:?}");
+                wrap(ui::version_mismatch(e));
+            } else {
+                wrap(ui::show_error_dialog(&e));
             }
         } else {
             eprintln!("{}", format!("{e:?}").red());
         }
         std::process::exit(1);
+    }
+
+    fn wrap<E: std::fmt::Debug, T>(r: Result<T, E>) {
+        if let Err(e) = r {
+            tracing::error!("error while displaying dialog to the user, uh oh: {e:?}");
+        }
     }
 }
