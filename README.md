@@ -33,10 +33,13 @@ cinc backends add \
 
 The `--root` argument is optional, but is recommended unless you include it in
 the url or are okay with cinc using the root of the WebDav server. You can
-learn more about what each of these arguments does with `cinc backends --help`.
+learn more about what each of these arguments does with `cinc backends add --help`.
 
-Once you have configured a backend you can move on to actually using cinc on your platform
-of choice. Currently it supports steam and anything that uses umu.
+Once you have configured a backend you can move on to actually using cinc on
+your platform of choice. Currently it supports steam and anything that uses umu
+or wine _in theory_ though for many games it will struggle to find the manifest
+without being launched through steam or heroic. You can use the `--steam-app-id`
+argument on `cinc launch` to solve this problem.
 
 ### Steam
 
@@ -80,7 +83,7 @@ binary (likely `/home/<name>/.local/share/cargo/bin/cinc`) and the arguments to
 If you want to run the game under gamescope or anything else which would
 usually act as a wrapper make sure cinc is the **last** executable in the pile.
 It depends on being passed the exact command to run the game itself (i.e. NOT
-gamescope running the game) in order to do various parts of it's platform
+gamescope running the game) in order to do various parts of its platform
 and sync paths detection.
 
 e.g. to run a game under steam with gamescope and cinc:
@@ -97,12 +100,12 @@ gamescope -- cinc launch -- %command%
 
 ## Support for games
 
-Technically not _all_ games are supported. Cinc uses the
+Technically not _all_ games are supported. cinc uses the
 [ludusavi](https://github.com/mtkennerly/ludusavi) manifest format (and
 ludusavi's manifest by default) and I have yet to find a game that _isn't_ on
 that list, but if a game isn't supported and you want it recommend either changing
 the `default_manifest` url in the config to point at your custom manifest or contributing
-to the ludusavi one directly.
+to the ludusavi one directly (which you should do by contribing to [pcgamingwiki]).
 
 Note that the manifest is cached so if you do this you will need to update it with
 
@@ -111,3 +114,4 @@ cinc --update
 ```
 
 [steamdb]: https://steamdb.info/
+[pcgamingwiki]: https://www.pcgamingwiki.com/

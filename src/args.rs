@@ -36,7 +36,7 @@ pub struct CliArgs {
     #[arg(long = "config")]
     pub config_path: Option<PathBuf>,
     #[command(subcommand)]
-    pub op: Operation,
+    pub op: Option<Operation>,
 }
 
 #[derive(Subcommand, Clone, Debug)]

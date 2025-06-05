@@ -223,8 +223,19 @@ async fn run() -> anyhow::Result<()> {
         update_manifest(manifest_url).await?;
     }
     debug!("secrets available: {}", secrets.available());
+    let Some(op) = &args.op else {
+        if !args.update {
+            let Err(e) = CliArgs::try_parse_from(["cinc", "--help"].into_iter()) else {
+                unreachable!()
+            }; // hacky way of showing help
+            println!("{e}");
+            bail!("");
+        }
 
-    match &args.op {
+        return Ok(());
+    };
+
+    match op {
         cinc::args::Operation::Launch(
             largs @ LaunchArgs {
                 no_download,

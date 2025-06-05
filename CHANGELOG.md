@@ -1,6 +1,7 @@
 # 0.2.2
 
 - Check for incompatible cinc version on the server
+- Fix unable to just pass `--update`
 
 # 0.2.1
 
