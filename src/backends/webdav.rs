@@ -108,9 +108,8 @@ impl<'s> WebDavStore<'s> {
     async fn mkdir_all(&self, dir: &Path) -> Result<()> {
         let dir = self.cfg.root.join_good(dir);
         debug!("mkdir all for {dir:?}");
-        assert!(dir.is_absolute());
         let parts = calc_mkdir_all_paths(&dir);
-        for p in parts.into_iter().skip(1) {
+        for p in parts.into_iter() {
             self.mkdir_abs(&p).await?;
         }
         Ok(())
@@ -169,6 +168,9 @@ impl WebDavStore<'_> {
 mod tests {
     use std::path::{Path, PathBuf};
 
+    use crate::{backends::webdav::WebDavStore, config::WebDavInfo, secrets::SecretsApi};
+    use test_log::test;
+
     use super::calc_mkdir_all_paths;
 
     #[test]
@@ -178,5 +180,73 @@ mod tests {
             paths.as_slice(),
             &["/hello", "/hello/world", "/hello/world/hmm"].map(PathBuf::from)
         )
+    }
+    async fn test_prefix_case(prefix: &str) {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let cinc = server
+            .mock("MKCOL", "/cinc")
+            .with_status(200)
+            .create_async()
+            .await;
+        let hmm = server
+            .mock("MKCOL", "/cinc/hmm")
+            .with_status(201)
+            .create_async()
+            .await;
+        let s = SecretsApi::new_unavailable();
+
+        let store = WebDavStore::new(
+            WebDavInfo {
+                url,
+                username: "".to_owned(),
+                psk: None,
+                root: prefix.into(),
+            },
+            &s,
+        );
+
+        store.mkdir_all(Path::new("hmm")).await.unwrap();
+
+        hmm.assert_async().await;
+        cinc.assert_async().await;
+    }
+
+    #[test(tokio::test)]
+    async fn using_non_absolute_prefix_is_okay() {
+        test_prefix_case("cinc").await;
+    }
+
+    #[test(tokio::test)]
+    async fn using_absolute_prefix_is_okay() {
+        test_prefix_case("/cinc").await;
+    }
+
+    #[test(tokio::test)]
+    async fn using_no_prefix_is_okay() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let hmm = server
+            .mock("MKCOL", "/hmm")
+            .with_status(201)
+            .create_async()
+            .await;
+        let s = SecretsApi::new_unavailable();
+
+        let store = WebDavStore::new(
+            WebDavInfo {
+                url,
+                username: "".to_owned(),
+                psk: None,
+                root: "".into(),
+            },
+            &s,
+        );
+
+        store.mkdir_all(Path::new("hmm")).await.unwrap();
+
+        hmm.assert_async().await;
     }
 }

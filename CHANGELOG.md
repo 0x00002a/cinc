@@ -1,3 +1,7 @@
+# 0.2.3
+
+- Fix panic on upload if webdav root does not start with a slash
+
 # 0.2.2
 
 - Check for incompatible cinc version on the server

@@ -1,6 +1,6 @@
 [package]
 name = "cinc"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 rust-version = "1.87.0"
 license = "MIT"
@@ -47,6 +47,7 @@ walkdir = "2.5.0"
 xz2 = "0.1.7"
 
 [dev-dependencies]
+mockito = { version = "1.7.0", default-features = false, features = ["color", "colored"] }
 temp-env = { version = "0.3.6", features = ["async_closure"] }
 test-log = { version = "0.2.17", features = ["trace"] }
 testdir = "0.9.3"
