@@ -101,8 +101,16 @@ impl<'s> WebDavStore<'s> {
             .await?
             .send()
             .await?;
-        resp.error_for_status()?;
-        Ok(())
+        match resp.status() {
+            StatusCode::METHOD_NOT_ALLOWED => {
+                // the collection already exists, this is fine
+                Ok(())
+            }
+            _ => {
+                resp.error_for_status()?;
+                Ok(())
+            }
+        }
     }
 
     async fn mkdir_all(&self, dir: &Path) -> Result<()> {
@@ -221,6 +229,33 @@ mod tests {
     #[test(tokio::test)]
     async fn using_absolute_prefix_is_okay() {
         test_prefix_case("/cinc").await;
+    }
+
+    #[test(tokio::test)]
+    async fn mkdir_abs_doesnt_fall_over_on_already_exists() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let hmm = server
+            .mock("MKCOL", "/cinc/hmm")
+            .with_status(405)
+            .create_async()
+            .await;
+        let s = SecretsApi::new_unavailable();
+
+        let store = WebDavStore::new(
+            WebDavInfo {
+                url,
+                username: "".to_owned(),
+                psk: None,
+                root: "cinc".into(),
+            },
+            &s,
+        );
+
+        store.mkdir_abs(Path::new("cinc/hmm")).await.unwrap();
+
+        hmm.assert_async().await;
     }
 
     #[test(tokio::test)]

@@ -1,6 +1,7 @@
 # 0.2.3
 
 - Fix panic on upload if webdav root does not start with a slash
+- Fix error on upload after the first if root was more than one level deep
 
 # 0.2.2
 
