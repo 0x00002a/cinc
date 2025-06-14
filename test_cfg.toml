@@ -1,8 +1,0 @@
-[backend]
-type = "filesystem"
-root = "./fs-store"
-
-
-[[game]]
-steam_id = 3146520
-save_dirs = ["$APPDATA/Roaming/Godot/app_userdata/webfishing_2_newver/"]
