@@ -47,7 +47,10 @@ walkdir = "2.5.0"
 xz2 = "0.1.7"
 
 [dev-dependencies]
-mockito = { version = "1.7.0", default-features = false, features = ["color", "colored"] }
+assert_fs = "1.1.3"
+mockito = { version = "1.7.0", default-features = false, features = [
+    "color",
+    "colored",
+] }
 temp-env = { version = "0.3.6", features = ["async_closure"] }
 test-log = { version = "0.2.17", features = ["trace"] }
-testdir = "0.9.3"

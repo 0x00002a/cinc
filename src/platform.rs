@@ -295,20 +295,31 @@ mod tests {
         secrets::SecretsApi,
         sync::ARCHIVE_NAME,
     };
+    use assert_fs::{
+        TempDir,
+        fixture::ChildPath,
+        prelude::{PathChild, PathCreateDir},
+    };
     use temp_env::async_with_vars;
     use test_log::test;
 
     use super::LaunchInfo;
 
-    async fn run_sync_test(root: &Path, file_path: &Path, largs: &LaunchArgs, game: GameManifest) {
+    async fn run_sync_test(
+        root: &TempDir,
+        file_path: &ChildPath,
+        largs: &LaunchArgs,
+        game: GameManifest,
+    ) {
         let contents = "hello-world";
         std::fs::write(file_path, contents).unwrap();
 
         let manifest = mk_manifest(game);
-        let local_path = root.join("store");
-        let archive_p = local_path.join("test").join(ARCHIVE_NAME);
+        let local_path = root.child("store");
+        let archive_p = local_path.child("test").child(ARCHIVE_NAME);
+        let archive_path = archive_p.path();
 
-        let cfg = test_cfg(local_path);
+        let cfg = test_cfg(local_path.to_path_buf());
         let secrets = SecretsApi::new_unavailable();
         let launch = LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
 
@@ -316,13 +327,13 @@ mod tests {
         assert!(!std::fs::exists(&archive_p).unwrap());
         launch.sync_up().await.unwrap();
         assert!(
-            std::fs::exists(&archive_p).unwrap(),
-            "didn't write archive to {archive_p:?}"
+            archive_p.exists(),
+            "didn't write archive to {archive_path:?}"
         );
         std::fs::remove_file(file_path).unwrap();
         launch.sync_down().await.unwrap();
         assert!(
-            !std::fs::exists(file_path).unwrap(),
+            !file_path.exists(),
             "sync downloaded even though it didn't have to"
         );
 
@@ -339,11 +350,11 @@ mod tests {
 
     #[test(tokio::test)]
     async fn local_fs_sync() {
-        let root = testdir::testdir!("local_fs_sync");
-        let file_path = root.join("file");
+        let root = TempDir::new().unwrap();
+        let file_path = root.child("file");
         let launch_exe = "run.exe";
-        let wine_prefix = root.join("wineprefix");
-        std::fs::create_dir_all(&wine_prefix).unwrap();
+        let wine_prefix = root.child("wineprefix");
+        wine_prefix.create_dir_all().unwrap();
         async_with_vars(
             [("WINEPREFIX", Some(wine_prefix.to_str().unwrap()))],
             async {
@@ -363,7 +374,10 @@ mod tests {
                         install_dir: None,
                         files: [(
                             TemplatePath::new(
-                                Path::new("<base>").join_good(&file_path).to_str().unwrap(),
+                                Path::new("<base>")
+                                    .join_good(file_path.path())
+                                    .to_str()
+                                    .unwrap(),
                             ),
                             FileConfig {
                                 preds: vec![],
@@ -400,7 +414,7 @@ mod tests {
 
     #[test(tokio::test)]
     async fn discovery_via_forced_steam_id_with_heroic() {
-        let root = testdir::testdir!("discovery_via_forced_steam_id_with_heroic");
+        let root = TempDir::new().unwrap();
         let launch_exe = "run.exe";
         let id = SteamId::new(0);
 
@@ -418,7 +432,7 @@ mod tests {
             command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
         };
         let manifest = mk_manifest(game);
-        let cfg = test_cfg(root);
+        let cfg = test_cfg(root.to_path_buf());
         let secrets = SecretsApi::new_unavailable();
         LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
     }
