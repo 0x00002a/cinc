@@ -93,10 +93,15 @@ impl<'f> SyncMgr<'f> {
         manifest: &'f GameManifest,
         remote_name: &'f str,
     ) -> Result<Self> {
-        let wine_prefix = std::env::var("WINEPREFIX").unwrap_or_else(|_| {
-            todo!("WINEPREFIX not found, todo: we need to fallback to the umu id here https://umu.openwinecomponents.org/");
-        });
-        let wine_prefix = Path::new(&wine_prefix);
+        let wine_prefix = std::env::var("WINEPREFIX")
+            .map(PathBuf::from)
+            .or_else(|_| {
+                // this defaults to umu-default if not found
+                let game_id = std::env::var("GAMEID").unwrap_or_else(|_| "umu-default".to_owned());
+                let home = dirs::home_dir().ok_or_else(|| anyhow!("cannot find homedir"))?;
+                // this is the fallback path for umu: https://github.com/Open-Wine-Components/umu-launcher?tab=readme-ov-file#how-do-i-use-it
+                anyhow::Ok(home.join("Games").join("umu").join(game_id))
+            })?;
         // we need to work out the base dir using a little magic
         let install_dir = Some(manifest.install_dir.as_deref().unwrap_or(game_name).into());
         let root_dir = if are_we_launched_by_heroic() {

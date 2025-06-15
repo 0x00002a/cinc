@@ -1,3 +1,7 @@
+# 0.2.4
+
+- Fix launching via umu-run with no WINEPREFIX
+
 # 0.2.3
 
 - Fix panic on upload if webdav root does not start with a slash
