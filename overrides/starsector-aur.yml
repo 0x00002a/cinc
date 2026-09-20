@@ -1,9 +1,0 @@
-predicates:
-    executable: "/usr/bin/starsector"
-manifest:
-    title: Starsector
-vars:
-    base: <home>/.local/share
-about:
-    name: Starsector AUR
-    desc: Starsector when installed via the AUR

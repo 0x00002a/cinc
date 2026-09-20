@@ -20,6 +20,7 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use tracing::{debug, error, warn};
 
+#[derive(Debug)]
 pub enum PlatformInfo {
     Steam { app_id: SteamId },
     Umu { exe_path: PathBuf },
@@ -162,15 +163,19 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
                 })
             }
             PlatformOpt::Auto => {
-                let cmd = largs.command.join(" ");
-
-                let overrides = builtin_overrides();
-                let found_override = overrides.iter().find(|o| o.matches(&cmd))?;
-                let title = found_override.title_override()?;
-                Some(PlatformInfo::ByTitle { title: title.to_owned() })
+                unreachable!()
             }
         }
-        }).ok_or_else(|| {
+        })
+        .or_else(|| {
+            let cmd = largs.command.join(" ");
+
+            let overrides = builtin_overrides();
+            let found_override = overrides.iter().find(|o| o.matches(&cmd)).expect("guh");
+            let title = found_override.title_override().expect("guh2");
+            Some(PlatformInfo::ByTitle { title: title.to_owned() })
+        })
+        .ok_or_else(|| {
             anyhow!(
                 "failed to resolve platform we are running on, try specifying it explicitly with --platform"
             )
@@ -205,7 +210,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
         })
     }
 
-    fn mk_sync_mgr(&self) -> Result<SyncMgr> {
+    fn mk_sync_mgr(&self) -> Result<SyncMgr<'_>> {
         let r = match &self.platform {
             PlatformInfo::Steam { app_id, .. } => {
                 SyncMgr::from_steam_game(self.game_name, self.game, *app_id, &self.bname)
@@ -213,7 +218,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
             PlatformInfo::Umu { .. } => {
                 SyncMgr::from_umu_env(self.game_name, self.game, &self.bname)
             }
-            PlatformInfo::ByTitle { title } => todo!(),
+            PlatformInfo::ByTitle { .. } => todo!(),
         };
         if let Err(e) = r.as_ref() {
             error!("failed to get information about game: {e}");
@@ -454,23 +459,20 @@ mod tests {
     #[test]
     fn starsector_builtin_override() {
         let root = TempDir::new().unwrap();
-        let id = SteamId::new(0);
 
-        let game =
-            // it wouldn't normally find this
-            GameManifest {
-                steam: Some(SteamInfo { id }),
-                ..Default::default()
-            };
+        let game = GameManifest {
+            ..Default::default()
+        };
         let largs = &LaunchArgs {
             platform: PlatformOpt::Auto,
             no_upload: false,
             no_download: false,
-            manifest_app_id_override: Some(id),
+            manifest_app_id_override: None,
             title_override: None,
             command: vec!["starsector.sh".to_owned()],
         };
-        let manifest = mk_manifest(game);
+        let mut manifest = GameManifests::new();
+        manifest.insert("Starsector".to_owned(), game);
         let cfg = test_cfg(root.to_path_buf());
         let secrets = SecretsApi::new_unavailable();
         let info = LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();

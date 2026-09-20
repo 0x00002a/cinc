@@ -12,7 +12,6 @@ const BUILTIN_OVERRIDES_DIR: include_directory::Dir<'_> = include_directory!("ov
 pub fn builtin_overrides() -> GameOverrides {
     BUILTIN_OVERRIDES_DIR
         .files()
-        .filter(|f| f.path().ends_with(".toml"))
         .map(|p| {
             let data = p.contents_utf8().unwrap();
             GameOverride::from_toml(data)
@@ -33,14 +32,24 @@ pub struct GameOverride {
 
 impl GameOverride {
     pub fn matches(&self, launch_command: &str) -> bool {
-        glob_match::glob_match(&self.predicates.executable, launch_command)
+        println!(
+            "match {} against {}",
+            self.predicates.executable, launch_command
+        );
+        fast_glob::glob_match(&self.predicates.executable, launch_command)
+    }
+    fn validate(&self) -> anyhow::Result<()> {
+        fast_glob::validate(&self.predicates.executable)?;
+        Ok(())
     }
 
     pub fn title_override(&self) -> Option<&str> {
         Some(&self.manifest.as_ref()?.title)
     }
-    pub fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
-        toml::de::from_str(s)
+    pub fn from_toml(s: &str) -> anyhow::Result<Self> {
+        let me: Self = toml::de::from_str(s)?;
+        me.validate()?;
+        Ok(me)
     }
 }
 
@@ -58,4 +67,26 @@ pub struct Manifest {
 pub struct About {
     name: String,
     desc: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game_overrides::GameOverride;
+
+    #[test]
+    fn starsector_game_override_from_command() {
+        let info = include_str!("../overrides/starsector-local.toml");
+        let ov = GameOverride::from_toml(info).unwrap();
+        assert!(ov.matches("./starsector.sh"));
+        assert!(ov.matches("starsector.sh"));
+    }
+
+    #[test]
+    fn t2() {
+        assert!(fast_glob::glob_match("*/test", "bingus/test"));
+        assert!(fast_glob::glob_match("*/test", "./test"));
+        assert!(fast_glob::glob_match("*test", "test"));
+        assert!(fast_glob::glob_match("{*,**,*/}test", "./test"));
+        assert!(fast_glob::glob_match("{*,**}test", "test"));
+    }
 }

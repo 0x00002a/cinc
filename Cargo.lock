@@ -528,9 +528,9 @@ dependencies = [
  "colored",
  "crossterm",
  "dirs",
+ "fast-glob",
  "fs-err",
  "gethostname 1.0.2",
- "glob-match",
  "include_directory",
  "itertools",
  "mockito",
@@ -1154,6 +1154,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast-glob"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d3f5d15b86ff37d2d23719f90657a53d5399abe0736dacb9e5fbe549314d349"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1433,12 +1442,6 @@ dependencies = [
  "log",
  "xml-rs",
 ]
-
-[[package]]
-name = "glob-match"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9985c9503b412198aa4197559e9a318524ebc4519c229bfa05a535828c950b9d"
 
 [[package]]
 name = "globset"
