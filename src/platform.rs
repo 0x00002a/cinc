@@ -136,7 +136,10 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
         secrets: &'s SecretsApi<'_>,
         largs @ LaunchArgs { command, .. }: &LaunchArgs,
     ) -> Result<Self> {
-        let platform = largs.resolve_platform().and_then(|platform| {
+        let platform = if let Some(ov) = largs.title_override.clone() {
+            PlatformInfo::ByTitle { title: ov }
+        } else {
+            largs.resolve_platform().and_then(|platform| {
                 match platform {
             PlatformOpt::Steam => {
                 let app_id = command
@@ -179,7 +182,8 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
             anyhow!(
                 "failed to resolve platform we are running on, try specifying it explicitly with --platform"
             )
-        })?;
+        })?
+        };
         let manifest_steam_id = largs.manifest_app_id_override;
 
         let (game_name, game) = manifest_steam_id
