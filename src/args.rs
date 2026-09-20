@@ -155,6 +155,13 @@ pub struct LaunchArgs {
     #[arg(long = "steam-app-id")]
     pub manifest_app_id_override: Option<SteamId>,
 
+    /// Manually specify the game's title, bypassing all automatic game detection. Case insensitive
+    ///
+    /// This is useful when launching games outside of launchers or other situations where
+    /// we cannot detect the game automatically
+    #[arg(long = "title")]
+    pub title_override: Option<String>,
+
     #[arg(help = "Command to run the game, e.g. for steam pass as %command%")]
     pub command: Vec<String>,
 }

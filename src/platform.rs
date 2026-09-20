@@ -8,6 +8,7 @@ use crate::{
     args::{LaunchArgs, PlatformOpt},
     backends::StorageBackend,
     config::{Config, SteamId},
+    game_overrides::builtin_overrides,
     manifest::{self, GameManifest, GameManifests},
     secrets::SecretsApi,
     sync::SyncMgr,
@@ -15,13 +16,14 @@ use crate::{
     ui::{self, SyncChoices},
 };
 use anyhow::Result;
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use itertools::Itertools;
 use tracing::{debug, error, warn};
 
 pub enum PlatformInfo {
     Steam { app_id: SteamId },
     Umu { exe_path: PathBuf },
+    ByTitle { title: String },
 }
 impl PlatformInfo {
     fn find_game_in_manifest<'a>(
@@ -46,6 +48,9 @@ impl PlatformInfo {
                         find_likelist_umu_match(manifests, exe_path)
                     }
                 }
+            }
+            PlatformInfo::ByTitle { title } => {
+                manifests.get_key_value(title).map(|(k, v)| (k.as_str(), v))
             }
         }
     }
@@ -130,14 +135,8 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
         secrets: &'s SecretsApi<'_>,
         largs @ LaunchArgs { command, .. }: &LaunchArgs,
     ) -> Result<Self> {
-        let Some(platform) = largs.resolve_platform() else {
-            bail!(
-                "failed to resolve platform we are running on, try specifying it explicitly with --platform"
-            );
-        };
-        let manifest_steam_id = largs.manifest_app_id_override;
-
-        let platform = match platform {
+        let platform = largs.resolve_platform().and_then(|platform| {
+                match platform {
             PlatformOpt::Steam => {
                 let app_id = command
                     .iter()
@@ -152,27 +151,39 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
                     })
                     .expect("couldn't find steam id");
 
-                PlatformInfo::Steam { app_id }
+                Some(PlatformInfo::Steam { app_id })
             }
             PlatformOpt::Umu => {
                 let exe_path = command
-                    .get(1)
-                    .ok_or_else(|| anyhow!("expected a command to invoke for umu"))?
+                    .get(1)?
                     .to_owned();
-                PlatformInfo::Umu {
+                Some(PlatformInfo::Umu {
                     exe_path: exe_path.into(),
-                }
+                })
             }
-            PlatformOpt::Auto => unreachable!(),
-        };
-        time! {
-        "finding the game manifest":
-        {
-        let (game_name, game) = manifest_steam_id.and_then(|id|{
-            debug!("using supplied steam id to find game in the manifest");
-            find_in_manifest_by_steam_id(manifests, id)
-        }).or_else(||  platform.find_game_in_manifest(manifests)).ok_or_else(|| anyhow!("failed to find game in manifest"))?;
-        }}
+            PlatformOpt::Auto => {
+                let cmd = largs.command.join(" ");
+
+                let overrides = builtin_overrides();
+                let found_override = overrides.iter().find(|o| o.matches(&cmd))?;
+                let title = found_override.title_override()?;
+                Some(PlatformInfo::ByTitle { title: title.to_owned() })
+            }
+        }
+        }).ok_or_else(|| {
+            anyhow!(
+                "failed to resolve platform we are running on, try specifying it explicitly with --platform"
+            )
+        })?;
+        let manifest_steam_id = largs.manifest_app_id_override;
+
+        let (game_name, game) = manifest_steam_id
+            .and_then(|id| {
+                debug!("using supplied steam id to find game in the manifest");
+                find_in_manifest_by_steam_id(manifests, id)
+            })
+            .or_else(|| platform.find_game_in_manifest(manifests))
+            .ok_or_else(|| anyhow!("failed to find game in manifest"))?;
 
         debug!("found game manifest for {game_name}\n{game:#?}");
 
@@ -202,6 +213,7 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
             PlatformInfo::Umu { .. } => {
                 SyncMgr::from_umu_env(self.game_name, self.game, &self.bname)
             }
+            PlatformInfo::ByTitle { title } => todo!(),
         };
         if let Err(e) = r.as_ref() {
             error!("failed to get information about game: {e}");
@@ -366,6 +378,7 @@ mod tests {
                         no_upload: false,
                         no_download: false,
                         manifest_app_id_override: None,
+                        title_override: None,
                         command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
                     },
                     GameManifest {
@@ -429,12 +442,39 @@ mod tests {
             no_upload: false,
             no_download: false,
             manifest_app_id_override: Some(id),
+            title_override: None,
             command: vec!["/usr/bin/umu-run".to_owned(), launch_exe.to_owned()],
         };
         let manifest = mk_manifest(game);
         let cfg = test_cfg(root.to_path_buf());
         let secrets = SecretsApi::new_unavailable();
         LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
+    }
+
+    #[test]
+    fn starsector_builtin_override() {
+        let root = TempDir::new().unwrap();
+        let id = SteamId::new(0);
+
+        let game =
+            // it wouldn't normally find this
+            GameManifest {
+                steam: Some(SteamInfo { id }),
+                ..Default::default()
+            };
+        let largs = &LaunchArgs {
+            platform: PlatformOpt::Auto,
+            no_upload: false,
+            no_download: false,
+            manifest_app_id_override: Some(id),
+            title_override: None,
+            command: vec!["starsector.sh".to_owned()],
+        };
+        let manifest = mk_manifest(game);
+        let cfg = test_cfg(root.to_path_buf());
+        let secrets = SecretsApi::new_unavailable();
+        let info = LaunchInfo::new(&cfg, &manifest, &secrets, largs).unwrap();
+        assert_eq!(info.game_name, "Starsector");
     }
     #[test]
     fn find_game_from_vars_heroic() {

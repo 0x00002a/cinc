@@ -1,6 +1,7 @@
 pub mod args;
 pub mod backends;
 pub mod config;
+pub mod game_overrides;
 pub mod manifest;
 pub mod paths;
 pub mod platform;

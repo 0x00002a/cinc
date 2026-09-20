@@ -1,0 +1,12 @@
+[predicates]
+executable = "*/starsector.sh"
+
+[manifest]
+title = "Starsector"
+
+[vars]
+base = "."
+
+[about]
+name = "Starsector local"
+desc = "Starsector when installed locally into a directory"
