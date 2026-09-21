@@ -167,8 +167,11 @@ pub enum TemplateError {
     UnknownVariable(String),
 }
 
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default, Clone)]
 pub struct TemplateInfo {
+    #[serde(default)]
     pub win_prefix: PathBuf,
+    #[serde(default)]
     pub win_user: String,
     pub base_dir: Option<PathBuf>,
     /// directory where games are installed. Under steam it should be the steam of the game otherwise the wine prefix usually
@@ -179,6 +182,26 @@ pub struct TemplateInfo {
     pub xdg_data: Option<PathBuf>,
     /// Install dir of the game in the manifest, or the game name
     pub install_dir: Option<PathBuf>,
+}
+impl TemplateInfo {
+    pub fn new_remote(install_dir: Option<PathBuf>) -> Self {
+        TemplateInfo {
+            win_prefix: PathBuf::from("win_prefix"),
+            win_user: "steamuser".to_owned(),
+            base_dir: Some("base_dir".into()),
+            root: Some("steam_root".into()),
+            store_user_id: None,
+
+            home_dir: Some("home_dir".into()),
+            xdg_config: Some("xdg_config".into()),
+            xdg_data: Some("xdg_data".into()),
+            install_dir,
+        }
+    }
+    pub fn with_store_user_id(mut self, id: Option<String>) -> Self {
+        self.store_user_id = id;
+        self
+    }
 }
 
 impl TemplatePath {

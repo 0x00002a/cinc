@@ -8,7 +8,7 @@ use crate::{
     args::{LaunchArgs, PlatformOpt},
     backends::StorageBackend,
     config::{Config, SteamId},
-    game_overrides::builtin_overrides,
+    game_overrides::{GameOverride, builtin_overrides},
     manifest::{self, GameManifest, GameManifests},
     secrets::SecretsApi,
     sync::SyncMgr,
@@ -127,6 +127,7 @@ pub struct LaunchInfo<'s, 'm> {
     bname: String,
     game: &'m GameManifest,
     game_name: &'m str,
+    game_override: Option<GameOverride>,
 }
 
 impl<'s, 'm> LaunchInfo<'s, 'm> {
@@ -136,60 +137,63 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
         secrets: &'s SecretsApi<'_>,
         largs @ LaunchArgs { command, .. }: &LaunchArgs,
     ) -> Result<Self> {
-        let platform = if let Some(ov) = largs.title_override.clone() {
-            PlatformInfo::ByTitle { title: ov }
-        } else {
-            largs.resolve_platform().and_then(|platform| {
-                match platform {
-            PlatformOpt::Steam => {
-                let app_id = command
-                    .iter()
-                    .find(|e| e.starts_with("AppId="))
-                    .map(|s| {
-                        s.split_once("=")
-                            .expect("invalid AppId field, has the steam arg format changed?")
-                            .1
-                            .parse::<u32>()
-                            .map(SteamId::new)
-                            .expect("failed to parse app id")
-                    })
-                    .expect("couldn't find steam id");
-
-                Some(PlatformInfo::Steam { app_id })
-            }
-            PlatformOpt::Umu => {
-                let exe_path = command
-                    .get(1)?
-                    .to_owned();
-                Some(PlatformInfo::Umu {
-                    exe_path: exe_path.into(),
-                })
-            }
-            PlatformOpt::Auto => {
-                unreachable!()
-            }
-        }
-        })
-        .or_else(|| {
+        let overrides = builtin_overrides();
+        let game_override = {
             let cmd = largs.command.join(" ");
-
-            let overrides = builtin_overrides();
-            let found_override = overrides.iter().find(|o| o.matches(&cmd)).expect("guh");
-            let title = found_override.title_override().expect("guh2");
-            Some(PlatformInfo::ByTitle { title: title.to_owned() })
-        })
-        .ok_or_else(|| {
-            anyhow!(
-                "failed to resolve platform we are running on, try specifying it explicitly with --platform"
-            )
-        })?
+            overrides.iter().find(|o| o.matches(&cmd)).cloned()
         };
+        let platform = largs
+            .resolve_platform()
+            .and_then(|platform| match platform {
+                PlatformOpt::Steam => {
+                    let app_id = command
+                        .iter()
+                        .find(|e| e.starts_with("AppId="))
+                        .map(|s| {
+                            s.split_once("=")
+                                .expect("invalid AppId field, has the steam arg format changed?")
+                                .1
+                                .parse::<u32>()
+                                .map(SteamId::new)
+                                .expect("failed to parse app id")
+                        })
+                        .expect("couldn't find steam id");
+
+                    Some(PlatformInfo::Steam { app_id })
+                }
+                PlatformOpt::Umu => {
+                    let exe_path = command.get(1)?.to_owned();
+                    Some(PlatformInfo::Umu {
+                        exe_path: exe_path.into(),
+                    })
+                }
+                PlatformOpt::Auto => {
+                    unreachable!()
+                }
+            })
+            // if we haven't autodetected the platform, fall back to using an override's title if we found one
+            .or_else(|| {
+                game_override.as_ref()
+                    .and_then(|g| g.title_override())
+                    .map(|t| PlatformInfo::ByTitle {
+                        title: t.to_owned(),
+                    })
+            }).ok_or_else(|| {
+                anyhow!("failed to detect platform. Try specifying it manually with --platform or providing an override file (see README for more)")
+            })?;
+
         let manifest_steam_id = largs.manifest_app_id_override;
 
+        // Priority is manifest steam id > title override > automatic detection
         let (game_name, game) = manifest_steam_id
             .and_then(|id| {
                 debug!("using supplied steam id to find game in the manifest");
                 find_in_manifest_by_steam_id(manifests, id)
+            })
+            .or_else(|| {
+                largs.title_override.clone().and_then(|t| {
+                    PlatformInfo::ByTitle { title: t }.find_game_in_manifest(manifests)
+                })
             })
             .or_else(|| platform.find_game_in_manifest(manifests))
             .ok_or_else(|| anyhow!("failed to find game in manifest"))?;
@@ -211,18 +215,31 @@ impl<'s, 'm> LaunchInfo<'s, 'm> {
             bname,
             game,
             game_name,
+            game_override,
         })
     }
 
     fn mk_sync_mgr(&self) -> Result<SyncMgr<'_>> {
         let r = match &self.platform {
-            PlatformInfo::Steam { app_id, .. } => {
-                SyncMgr::from_steam_game(self.game_name, self.game, *app_id, &self.bname)
-            }
-            PlatformInfo::Umu { .. } => {
-                SyncMgr::from_umu_env(self.game_name, self.game, &self.bname)
-            }
-            PlatformInfo::ByTitle { .. } => todo!(),
+            PlatformInfo::Steam { app_id, .. } => SyncMgr::from_steam_game(
+                self.game_name,
+                self.game,
+                *app_id,
+                &self.bname,
+                self.game_override.as_ref(),
+            ),
+            PlatformInfo::Umu { .. } => SyncMgr::from_umu_env(
+                self.game_name,
+                self.game,
+                &self.bname,
+                self.game_override.as_ref(),
+            ),
+            PlatformInfo::ByTitle { .. } => SyncMgr::from_local_fallback(
+                self.game,
+                self.game_name,
+                &self.bname,
+                self.game_override.as_ref().unwrap(),
+            ),
         };
         if let Err(e) = r.as_ref() {
             error!("failed to get information about game: {e}");

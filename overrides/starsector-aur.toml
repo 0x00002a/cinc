@@ -6,7 +6,7 @@ executable = "/usr/bin/starsector"
 title = "Starsector"
 
 [vars]
-base = "<home>/.local/share"
+root = "$HOME/.local/share"
 
 [about]
 name = "Starsector AUR"

@@ -13,6 +13,7 @@ use xz2::bufread::{XzDecoder, XzEncoder};
 use crate::{
     backends::{FileMetaEntry, FileMetaTable, StorageBackend, SyncMetadata},
     config::{SteamId, SteamId64},
+    game_overrides::GameOverride,
     manifest::{FileTag, GameManifest, PlatformInfo, TemplateInfo, TemplatePath},
     paths::{self, PathExt, extract_postfix, steam_dir},
     platform::HEROIC_APP_NAME,
@@ -42,6 +43,7 @@ impl<'f> SyncMgr<'f> {
         manifest: &'f GameManifest,
         app_id: SteamId,
         remote_name: &'f str,
+        game_override: Option<&GameOverride>,
     ) -> Result<Self> {
         let steam_info = steam_dir()?;
         let (steam_app_manifest, steam_app_lib) = steam_info
@@ -54,7 +56,7 @@ impl<'f> SyncMgr<'f> {
             .map(|id| id.to_id3().to_string());
         // local template subst
         let install_dir = Some(manifest.install_dir.as_deref().unwrap_or(game_name).into());
-        let local_info = TemplateInfo {
+        let mut local_info = TemplateInfo {
             win_prefix: steam_app_lib
                 .path()
                 .join("steamapps")
@@ -72,26 +74,19 @@ impl<'f> SyncMgr<'f> {
             xdg_data: None,
             install_dir: install_dir.clone(),
         };
+        if let Some(ov) = game_override {
+            ov.apply_vars(&mut local_info)?;
+        }
 
         // remote template substs
-        let remote_info = TemplateInfo {
-            win_prefix: PathBuf::from("win_prefix"),
-            win_user: "steamuser".to_owned(),
-            base_dir: Some("base_dir".into()),
-            root: Some("steam_root".into()),
-            store_user_id,
-
-            home_dir: Some("home_dir".into()),
-            xdg_config: Some("xdg_config".into()),
-            xdg_data: Some("xdg_data".into()),
-            install_dir,
-        };
+        let remote_info = TemplateInfo::new_remote(install_dir).with_store_user_id(store_user_id);
         Self::from_manifest(manifest, local_info, &remote_info, remote_name)
     }
     pub fn from_umu_env(
         game_name: &'f str,
         manifest: &'f GameManifest,
         remote_name: &'f str,
+        game_override: Option<&GameOverride>,
     ) -> Result<Self> {
         let wine_prefix = std::env::var("WINEPREFIX")
             .map(PathBuf::from)
@@ -116,7 +111,7 @@ impl<'f> SyncMgr<'f> {
         };
 
         // local template subst
-        let local_info = TemplateInfo {
+        let mut local_info = TemplateInfo {
             win_prefix: wine_prefix.join("pfx").join("drive_c"),
             win_user: "steamuser".to_owned(),
             base_dir: None,
@@ -135,20 +130,31 @@ impl<'f> SyncMgr<'f> {
             install_dir: install_dir.clone(),
         };
 
-        // remote template substs
-        let remote_info = TemplateInfo {
-            win_prefix: PathBuf::from("win_prefix"),
-            win_user: "steamuser".to_owned(),
-            base_dir: Some("base_dir".into()),
-            root: Some("steam_root".into()),
-            store_user_id: None,
+        if let Some(ov) = game_override {
+            ov.apply_vars(&mut local_info)?;
+        }
 
-            home_dir: Some("home_dir".into()),
-            xdg_config: Some("xdg_config".into()),
-            xdg_data: Some("xdg_data".into()),
-            install_dir,
-        };
+        // remote template substs
+        let remote_info = TemplateInfo::new_remote(install_dir);
         Self::from_manifest(manifest, local_info, &remote_info, remote_name)
+    }
+    /// Local fallback, no information from the launcher or anything assume
+    /// we are invoked in the same directory and run with it
+    pub fn from_local_fallback(
+        manifest: &'f GameManifest,
+        game_name: &'f str,
+        remote_name: &'f str,
+        ovr: &GameOverride,
+    ) -> Result<Self> {
+        let install_dir = Some(manifest.install_dir.as_deref().unwrap_or(game_name).into());
+        let mut local = TemplateInfo {
+            install_dir: install_dir.clone(),
+            home_dir: dirs::home_dir(),
+            ..Default::default()
+        };
+        ovr.apply_vars(&mut local)?;
+        let remote_info = TemplateInfo::new_remote(install_dir);
+        Self::from_manifest(manifest, local, &remote_info, remote_name)
     }
 
     fn from_manifest(

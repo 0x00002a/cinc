@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use include_directory::include_directory;
 use serde::{Deserialize, Serialize};
 
-use crate::manifest::TemplatePath;
+use crate::manifest::TemplateInfo;
 
 pub type GameOverrides = Vec<GameOverride>;
 
@@ -20,11 +18,10 @@ pub fn builtin_overrides() -> GameOverrides {
         .collect()
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
 pub struct GameOverride {
     predicates: Predicates,
-    #[serde(default)]
-    vars: HashMap<String, TemplatePath>,
+    vars: TemplateInfo,
     #[serde(default)]
     manifest: Option<Manifest>,
     about: About,
@@ -51,19 +48,31 @@ impl GameOverride {
         me.validate()?;
         Ok(me)
     }
+    pub fn apply_vars(&self, vs: &mut TemplateInfo) -> anyhow::Result<()> {
+        if let Some(p) = &self.vars.base_dir {
+            vs.base_dir = Some(shellexpand::full(p.to_str().unwrap())?.into_owned().into())
+        }
+        if let Some(p) = &self.vars.install_dir {
+            vs.install_dir = Some(shellexpand::full(p.to_str().unwrap())?.into_owned().into())
+        }
+        if let Some(p) = &self.vars.root {
+            vs.root = Some(shellexpand::full(p.to_str().unwrap())?.into_owned().into());
+        }
+        Ok(())
+    }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Predicates {
     executable: String,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Manifest {
     title: String,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Default, Clone)]
 pub struct About {
     name: String,
     desc: String,

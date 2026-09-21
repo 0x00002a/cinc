@@ -5,7 +5,7 @@ executable = "{*,**,*/}starsector.sh"
 title = "Starsector"
 
 [vars]
-base = "."
+root = "$HOME/.local/share"
 
 [about]
 name = "Starsector local"
