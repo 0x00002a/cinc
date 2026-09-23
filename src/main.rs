@@ -8,7 +8,7 @@ use crossterm::{
 use fs_err as fs;
 use std::{
     fs::{File, OpenOptions},
-    io::{BufReader, BufWriter},
+    io::{BufRead, BufReader, BufWriter, Read},
     process::exit,
     time::SystemTime,
 };
@@ -196,6 +196,34 @@ macro_rules! print_success {
         println!("{}", format!($($arg)*).green())
     }
 }
+fn first_line_if_text_file(path: &str) -> Result<Option<String>> {
+    let mut r = BufReader::new(File::open(path)?);
+    // look at the first kb for a newline
+    let mut buf = vec![0; 1024];
+    let mut read = 0;
+    while read < buf.len() {
+        let v = r.read(&mut buf)?;
+        if v == 0 {
+            break;
+        }
+        read += v;
+    }
+
+    // newline is 0xA char
+    if let Some(idx) = buf.iter().position(|c| *c == 0xA) {
+        Ok(Some(str::from_utf8(&buf[0..idx])?.to_owned()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn parse_shbang(line: &str) -> Option<impl Iterator<Item = &str>> {
+    if line.starts_with("!#") {
+        Some(line[1..].split(" "))
+    } else {
+        None
+    }
+}
 
 async fn run() -> anyhow::Result<()> {
     let start_time = SystemTime::now();
@@ -271,6 +299,14 @@ async fn run() -> anyhow::Result<()> {
                 "we had an overhead of {}ms",
                 launch_time.duration_since(start_time)?.as_millis()
             );
+            let mut command = command.clone();
+            if let Some(l) = first_line_if_text_file(&command[0])? {
+                panic!("ba");
+                let mut old_cmd = command;
+                command = parse_shbang(&l).ok_or_else(|| anyhow::anyhow!("command to run is a text file and doesn't have an shbang, we don't know how to run this"))?.map(|s| s.to_owned()).collect();
+                command.append(&mut old_cmd);
+
+            debug!("command to run: {command:?}");
 
             let mut c = std::process::Command::new(&command[0])
                 .args(command.iter().skip(1))

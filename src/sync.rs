@@ -168,7 +168,7 @@ impl<'f> SyncMgr<'f> {
             if !cfg.preds.iter().all(|p| {
                 p.sat(PlatformInfo {
                     store: None,
-                    wine: true, // assume wine true and filter out when it's not later
+                    wine: false, // assume wine true and filter out when it's not later
                 })
             }) {
                 debug!("rejecting {filename:?} as predicates were not satisfied");
