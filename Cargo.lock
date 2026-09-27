@@ -544,6 +544,7 @@ dependencies = [
  "serde_yaml",
  "shellexpand",
  "steamlocate",
+ "subprocess",
  "tar",
  "temp-env",
  "test-log",
@@ -3835,6 +3836,16 @@ dependencies = [
  "quote",
  "rustversion",
  "syn",
+]
+
+[[package]]
+name = "subprocess"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5c2982c58b661c6509861bd3383870b6918030606e8b5afb0ade14b4a3cff12"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]

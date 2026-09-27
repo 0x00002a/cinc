@@ -1,5 +1,6 @@
 use include_directory::include_directory;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::manifest::TemplateInfo;
 
@@ -29,11 +30,12 @@ pub struct GameOverride {
 
 impl GameOverride {
     pub fn matches(&self, launch_command: &str) -> bool {
-        println!(
-            "match {} against {}",
+        let r = fast_glob::glob_match(&self.predicates.executable, launch_command);
+        debug!(
+            "match {} against {}... {r}",
             self.predicates.executable, launch_command
         );
-        fast_glob::glob_match(&self.predicates.executable, launch_command)
+        r
     }
     fn validate(&self) -> anyhow::Result<()> {
         fast_glob::validate(&self.predicates.executable)?;

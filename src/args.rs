@@ -162,6 +162,12 @@ pub struct LaunchArgs {
     #[arg(long = "title")]
     pub title_override: Option<String>,
 
+    /// Execute the passed argument in the same directory that the binary is in
+    ///
+    /// E.g. if given `./bingus/bongus.exe` it will do the equivalent of `cd bingus && ./bongus.exe`
+    #[arg(long)]
+    pub locally_execute: bool,
+
     #[arg(help = "Command to run the game, e.g. for steam pass as %command%")]
     pub command: Vec<String>,
 }

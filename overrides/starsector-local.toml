@@ -1,5 +1,5 @@
 [predicates]
-executable = "{*,**,*/}starsector.sh"
+executable = "{*,**,*/,**/}starsector.sh"
 
 [manifest]
 title = "Starsector"
